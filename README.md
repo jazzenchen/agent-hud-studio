@@ -1,12 +1,12 @@
-# AStudio · Personal 3D Virtual Talking-Head Studio
+# AStudio · Virtual Studio
 
 <p align="center">
   <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a> · <a href="https://studio.agenthud.app">Live Demo</a> · <a href="https://github.com/jazzenchen/agent-hud-open">Agent HUD (Open Source)</a>
 </p>
 
-> **Built from scratch with Antigravity · Cross-session coordination powered by [Agent HUD](https://github.com/jazzenchen/agent-hud-open)**
+> A virtual studio for product films, built from zero with Antigravity + three.js. Rendered live in the browser — walk it at [studio.agenthud.app](https://studio.agenthud.app).
 
-A personal 3D virtual talking-head studio (5-zone Geek Industrial Loft) that I built from scratch using **Antigravity**, featuring real-time WebGL2 rendering, time-of-day lighting transitions, first-person walkthrough, and multi-angle cinematic camera presets.
+Built from scratch with **Antigravity** and coordinated across sessions via **[Agent HUD](https://github.com/jazzenchen/agent-hud-open)**, this 5-zone Geek Industrial Loft features real-time WebGL2 rendering, time-of-day lighting transitions, first-person walkthrough, and multi-angle cinematic camera presets.
 
 * **Live Demo**: [studio.agenthud.app](https://studio.agenthud.app)
 * **Open-Source Companion Tool I Heavily Used**: [Agent HUD (`agent-hud-open`)](https://github.com/jazzenchen/agent-hud-open) · [agenthud.app](https://agenthud.app)
@@ -43,7 +43,7 @@ Everything in this repository—the Blender Python scene pipeline, Cycles lightm
 1. **Asset & Scene Pipeline**: Set up automated Poly Haven / BlenderKit fetching and the Blender Python scene builder.
 2. **Full Loft & Lightmap Baking**: Expanded from the main desk to a 5-zone loft and baked 4 time-of-day global illumination maps.
 3. **Interactive Frontend**: Built camera presets, first-person walkthrough, smooth mood transitions, reactive neon + audio, and the glassmorphic HUD.
-4. **Visual QC & Polish**: Iterated via automated screenshots to fix clipping, exposure, and desktop/mobile frame pacing until ready for daily virtual studio use.
+4. **Visual QC & Polish**: Iterated via automated screenshots to fix clipping, exposure, and desktop/mobile frame pacing until ready for filming product videos.
 
 Throughout development, I ran multiple parallel Antigravity sessions (3D pipeline, frontend rendering, visual QC). **Because Antigravity has no built-in cross-session communication**, I relied heavily on my own open-source project **[Agent HUD](https://github.com/jazzenchen/agent-hud-open)** to bridge them:
 

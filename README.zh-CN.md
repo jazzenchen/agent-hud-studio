@@ -1,12 +1,12 @@
-# AStudio · 个人 3D 虚拟口播 Studio
+# AStudio · 虚拟工作室
 
 <p align="center">
   <a href="README.md">English</a> · <strong>简体中文</strong> · <a href="https://studio.agenthud.app">在线体验</a> · <a href="https://github.com/jazzenchen/agent-hud-open">Agent HUD (开源项目)</a>
 </p>
 
-> **用 Antigravity 从零打造的个人 3D 虚拟口播 Studio · 通过 [Agent HUD](https://github.com/jazzenchen/agent-hud-open) 辅助跨 Session 通信**
+> 用 Antigravity + three.js 从零打造的虚拟工作室，拍产品宣传片用；浏览器里实时渲染，打开就能逛：[studio.agenthud.app](https://studio.agenthud.app)。
 
-这是一个我用 **Antigravity** 从零搭建的个人虚拟口播 Studio（5 区域极客工业风 Loft），支持浏览器端实时交互、多时段光照切换、第一人称漫游与多机位拍摄。
+这是一个我用 **Antigravity** 从零搭建、并通过 **[Agent HUD](https://github.com/jazzenchen/agent-hud-open)** 辅助跨 Session 通信完成的 5 区域极客工业风 Loft 虚拟工作室，支持浏览器端实时交互、多时段光照切换、第一人称漫游与多机位拍摄。
 
 * **在线体验**：[studio.agenthud.app](https://studio.agenthud.app)
 * **搭建期间重度使用的开源工具**：[Agent HUD (`agent-hud-open`)](https://github.com/jazzenchen/agent-hud-open) · [agenthud.app](https://agenthud.app)
@@ -41,9 +41,9 @@
 整个项目的 Blender 自动化建景、Cycles 光照烘焙管线、Three.js 前端渲染与交互逻辑，全部是我用 **Antigravity** 从零一步步搭建出来的：
 
 1. **搭管线**：先让 Antigravity 写好 Poly Haven / BlenderKit 资产拉取脚本和 Blender Python 建景框架。
-2. **扩空间与烘焙**：从口播主桌扩展到全屋 5 个功能区，自动化烘焙 4 个时间段的全局光照贴图。
+2. **扩空间与烘焙**：从工作室主桌扩展到全屋 5 个功能区，自动化烘焙 4 个时间段的全局光照贴图。
 3. **写前端与调交互**：实现多机位、第一人称漫游、四时段平滑切换、音频律动和玻璃拟态 HUD。
-4. **实机 QC 与打磨**：反复截图检视穿模、曝光和桌面/手机端帧率，逐项调优到可作为日常虚拟口播场景使用。
+4. **实机 QC 与打磨**：反复截图检视穿模、曝光和桌面/手机端帧率，逐项调优到可直接用于拍产品宣传片。
 
 搭建过程中我经常同时开多个 Antigravity Session 并行推进（建景烘焙、前端交互、实机截图排查）。**因为 Antigravity 本身没有 Session 间通信能力**，多会话之间没法直接同步状态或交接结果，所以我全程重度使用自己开源的 **[Agent HUD](https://github.com/jazzenchen/agent-hud-open)** 来辅助：
 
