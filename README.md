@@ -21,7 +21,7 @@ A personal 3D virtual talking-head studio (5-zone Geek Industrial Loft) that I b
 * **Scene & Camera Switching (7 Presets)**: Fly smoothly across **Studio, Living Room, Coffee Kitchen, Bedroom, Spa Bath, Desk Macro (shallow DoF), and Window View** via keys `1`–`7`, plus an automatic `Pan` arc sweep.
 * **First-Person Walkthrough**: Press `V` to enter first-person walk mode (`WASD` + `Shift` sprint + mouse look) with collision detection.
 * **Render Inspection Modes**: Toggle **Photo Mode** (hide HUD, `P`), **Clay** (`C`), **Lighting-Only** (`L`), and **Wireframe** (`G`) from the top bar.
-* **Background Music & Reactive Lighting**: Toggle mood-matched soundtracks (`B`), cycle 6 audio-reactive neon modes (`R`), switch indoor lighting scenes (`K`), and cycle multi-monitor displays (`T`).
+* **Background Music & Reactive Lighting**: Toggle mood-matched soundtracks (`B`, generated in Antigravity along with the 3 skyline backdrops), cycle 6 audio-reactive neon modes (`R`), switch indoor lighting scenes (`K`), and cycle multi-monitor displays (`T`).
 * **Performance & Quality Controls (Desktop & Mobile Tuned)**: Expandable real-time FPS / Draw Calls / triangle counter on the top left, with **Auto / Ultra / High / 60F+** quality presets—running smoothly at 60–100 FPS on desktop and specially tuned for mobile browsers as well.
 
 ---
@@ -72,24 +72,47 @@ If you use Antigravity, Claude Code, Codex, or other coding agents daily, check 
 
 ---
 
-## Local Setup & Asset Notice
+## Third-Party Assets & Local Rebuild
 
-> **3D Asset Licensing Notice**
-> The source code is licensed under **MIT**. Because the full scene uses third-party 3D models (e.g., BlenderKit Royalty-Free / official showcase models) whose licenses restrict redistribution, **merged `public/assets/full_loft.glb` and `assets/blend/full_loft.blend` are excluded from this repository**.
-> * To experience the full studio immediately, visit the live demo: **[studio.agenthud.app](https://studio.agenthud.app)**.
-> * To rebuild locally, fetch the assets and run the Blender pipeline below (requires Blender 4.3+):
+### Why `full_loft.glb` and `full_loft.blend` Are Not in This Repository
+
+The merged scene files (`public/assets/full_loft.glb` and `assets/blend/full_loft.blend`) combine 3D models whose licenses forbid redistribution. A fresh clone therefore runs without the full merged scene—visit the live demo at **[studio.agenthud.app](https://studio.agenthud.app)** to explore the complete studio right away.
+
+### Asset Breakdown (Full Attribution Table)
+
+See **[`docs/THIRD_PARTY_ASSETS.md`](docs/THIRD_PARTY_ASSETS.md)** for the complete item-by-item table with authors and direct links:
+
+* **57 BlenderKit Royalty-Free (RF) models** *(not in repo)* — BlenderKit's Royalty-Free license allows use in a rendered work or hosted experience, but forbids redistributing the 3D files themselves.
+* **2 BlenderKit CC0 models** *(CC0, fetched locally)* — `screwdriver_real` and `zaku_gunpla`.
+* **3 Apple AR Quick Look `.usdz` models** *(not in repo)* — Mac mini, Mac Studio, and MacBook Air 15" Midnight from Apple's official product pages; these belong to Apple Inc. and are not redistributable (`build_studio_slice.py` skips them cleanly if absent).
+* **Poly Haven CC0 assets** — 3 HDRIs are already committed under `public/assets/hdris/`; 16 CC0 3D models and 12 CC0 PBR textures are fetched locally via `pipeline/fetch_polyhaven.py`.
+* **Original / Generated Media (included in repo)** — The 4 ambient MP3 soundtracks (`public/assets/audio/*.mp3`) and 3 city skyline backdrops (`public/assets/sky/*.jpg`) were generated in Antigravity and are included directly in this repository.
+
+### Rebuilding the Full Scene Locally
+
+Requires **Blender 4.3+**, **Python 3**, and **pnpm**:
 
 ```bash
-# 1. Install dependencies
+# 1. Install frontend dependencies
 pnpm install
 
-# 2. Fetch assets and build/bake the scene
-pnpm run assets:fetch:polyhaven
-pnpm run assets:fetch:blenderkit
-pnpm run pipeline:loft
-pnpm run pipeline:loft:bake
+# 2. Fetch Poly Haven CC0 textures, HDRIs, and 3D models (no account required)
+python3 pipeline/fetch_polyhaven.py --phase all
 
-# 3. Start local dev server
+# 3. Fetch BlenderKit models into assets/cache/blenderkit/
+#    (A BlenderKit account is needed for Royalty-Free assets if downloading manually / via the BlenderKit add-on)
+python3 pipeline/fetch_blenderkit.py --phase all
+
+# 4. Assemble the full 5-zone loft -> outputs assets/blend/full_loft.blend
+${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/build_full_loft.py
+
+# 5. Bake Cycles HDR RGBM lightmaps & export glTF -> outputs:
+#    - public/assets/full_loft.glb
+#    - public/assets/lightmaps/loft_{east,west}_{midnight,daylight,noon,golden}.png
+#    - public/assets/loft_colliders.json
+${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/bake_full_loft.py
+
+# 6. Start local dev server
 pnpm dev
 ```
 

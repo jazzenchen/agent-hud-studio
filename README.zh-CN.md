@@ -21,7 +21,7 @@
 * **切换场景（7 个电影机位）**：覆盖 **Studio 工作室、Living 客厅、Kitchen 咖啡厨房、Bedroom 卧室、Bath 浴室、Macro 桌面微距（自动浅景深）、View 落地窗露台**，数字键 `1`–`7` 一键平滑飞镜，支持 `Pan` 自动弧线巡航。
 * **自由漫游（第一人称 Walk 模式）**：按 `V` 随时切入第一人称视角，支持 `WASD` 移动、`Shift` 加速、鼠标环视与防穿模碰撞检测。
 * **多种检视模式**：顶部一键切换 **Photo（纯净摄影隐藏 HUD，`P`）**、**Clay（纯白模，`C`）**、**Lighting（纯光照检视，`L`）**、**Wire（线框拓扑，`G`）**。
-* **背景音乐与氛围联动**：按 `B` 开关随时间段切换的背景配乐；按 `R` 切换 6 种霓虹灯效并随音乐节奏实时律动；按 `K` 切换全屋照明情景，按 `T` 切换桌面多屏画面。
+* **背景音乐与氛围联动**：按 `B` 开关随时间段切换的背景配乐（4 首配乐与 3 张城市天际线背景图均由 Antigravity 生成并已包含在仓库中）；按 `R` 切换 6 种霓虹灯效并随音乐节奏实时律动；按 `K` 切换全屋照明情景，按 `T` 切换桌面多屏画面。
 * **性能与画质调控（已做桌面 & 手机端专项调优）**：左上角可展开实时 FPS / Draw Calls / 三角面数监控，右上角支持 **Auto / Ultra / High / 60F+** 四档画质切换；桌面端可稳定运行在 60–100 FPS，同时也针对手机端性能做了专门调优，手机浏览器打开同样流畅。
 
 ---
@@ -72,24 +72,47 @@
 
 ---
 
-## 本地运行与资产说明
+## 第三方素材与本地重建
 
-> **关于 3D 模型版权的说明**
-> 本仓库代码基于 **MIT License** 开源。由于完整场景使用了部分第三方平台的 3D 模型（如 BlenderKit Royalty-Free / 官方展示模型），受原协议限制，**仓库不包含合并后的 `public/assets/full_loft.glb` 和 `assets/blend/full_loft.blend`**。
-> * 想直接体验完整 Studio，请访问在线版本：**[studio.agenthud.app](https://studio.agenthud.app)**。
-> * 想在本地自行构建，可按下方命令拉取资产并通过本机 Blender 生成（需 Blender 4.3+）：
+### 为什么仓库中不包含 `full_loft.glb` 和 `full_loft.blend`
+
+合并后的场景文件（`public/assets/full_loft.glb` 和 `assets/blend/full_loft.blend`）包含了协议禁止再分发的第三方 3D 模型。因此直接克隆本仓库运行不会包含完整合并场景；想直接体验完整成品，请访问在线 Demo：**[studio.agenthud.app](https://studio.agenthud.app)**。
+
+### 素材清单与协议说明
+
+完整的逐项列表（含作者、协议与直达链接）见 **[`docs/THIRD_PARTY_ASSETS.md`](docs/THIRD_PARTY_ASSETS.md)**：
+
+* **57 个 BlenderKit Royalty-Free 模型**（未入库）：BlenderKit 的 Royalty-Free 协议允许在渲染作品或在线展示中使用，但**禁止再分发 3D 模型文件本身**。
+* **2 个 BlenderKit CC0 模型**（CC0，本地脚本拉取）：`screwdriver_real` 与 `zaku_gunpla`。
+* **3 个 Apple AR Quick Look `.usdz` 模型**（未入库）：Mac mini、Mac Studio 与 MacBook Air 15 英寸午夜色，来自苹果官方产品页，归 Apple Inc. 所有且不可再分发（本地缺失时 `build_studio_slice.py` 会自动跳过，不影响构建）。
+* **Poly Haven CC0 资产**：3 张 2K HDRI 已直接提交在 `public/assets/hdris/`；16 个 CC0 3D 模型与 12 套 CC0 PBR 贴图可通过 `pipeline/fetch_polyhaven.py` 本地拉取。
+* **原创 / 生成媒体（已包含在仓库中）**：4 首环境配乐（`public/assets/audio/*.mp3`）与 3 张城市天际线背景图（`public/assets/sky/*.jpg`）均在 Antigravity 中生成，已直接随仓库发布。
+
+### 本地重建完整场景
+
+需本机安装 **Blender 4.3+**、**Python 3** 和 **pnpm**：
 
 ```bash
-# 1. 安装依赖
+# 1. 安装前端依赖
 pnpm install
 
-# 2. 拉取资产并构建场景
-pnpm run assets:fetch:polyhaven
-pnpm run assets:fetch:blenderkit
-pnpm run pipeline:loft
-pnpm run pipeline:loft:bake
+# 2. 拉取 Poly Haven CC0 贴图、HDRI 与 3D 模型（无需账号）
+python3 pipeline/fetch_polyhaven.py --phase all
 
-# 3. 启动本地开发服务
+# 3. 拉取 BlenderKit 模型至 assets/cache/blenderkit/
+#    （手动下载或通过 BlenderKit 插件获取 Royalty-Free 模型需 BlenderKit 账号）
+python3 pipeline/fetch_blenderkit.py --phase all
+
+# 4. 组装全屋 5 区域场景 -> 输出 assets/blend/full_loft.blend
+${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/build_full_loft.py
+
+# 5. 烘焙 Cycles HDR RGBM 光贴图并导出 glTF -> 输出：
+#    - public/assets/full_loft.glb
+#    - public/assets/lightmaps/loft_{east,west}_{midnight,daylight,noon,golden}.png
+#    - public/assets/loft_colliders.json
+${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/bake_full_loft.py
+
+# 6. 启动本地开发服务
 pnpm dev
 ```
 
