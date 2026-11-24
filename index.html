@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>AgentHUD Studio · Geek Industrial Loft 3D Showcase</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/src/styles/hud.css" />
+  </head>
+  <body>
+    <canvas id="webgl-canvas" aria-label="AgentHUD Studio 3D interactive scene"></canvas>
+
+    <!-- Minimalist Loading Curtain -->
+    <div id="loading-overlay" class="loading-overlay">
+      <div class="loading-card">
+        <div class="loading-eyebrow">AGENTHUD STUDIO · CYCLES BAKED GI</div>
+        <h1 class="loading-title">AgentHUD Studio</h1>
+        <div class="loading-bar-track">
+          <div id="loading-bar-fill" class="loading-bar-fill"></div>
+        </div>
+        <div class="loading-meta">
+          <div id="loading-status" class="loading-status">Initializing WebGL2 / AgX rendering pipeline…</div>
+          <div id="loading-bytes" class="loading-bytes">0.0 / 85.2 MB</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top-Left Brand & Collapsible Real-Time Perf Pill -->
+    <header class="hud-top-left">
+      <a
+        class="brand-pill"
+        href="https://agenthud.app"
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Visit AgentHUD"
+      >
+        <span class="brand-dot"></span>
+        <span class="brand-sub">Powered by</span>
+        <span class="brand-name">AgentHUD</span>
+      </a>
+      <button id="perf-pill" class="perf-pill" type="button" title="Click to expand or collapse render telemetry">
+        <span id="perf-fps" class="perf-fps">60 FPS</span>
+        <span id="perf-detail" class="perf-detail">0 DC · 0k △</span>
+      </button>
+    </header>
+
+    <!-- Top-Right Render Inspection Modes, Quality, Language & Help Controls -->
+    <aside class="hud-top-right">
+      <div id="view-group" class="segmented-group" role="group" aria-label="Render inspection modes">
+        <button id="view-photo" class="seg-btn" data-view-mode="photo" type="button" aria-pressed="false" title="Hide HUD for clean photography view (P)">Photo</button>
+        <button id="view-clay" class="seg-btn" data-view-mode="clay" type="button" aria-pressed="false" title="Pure clay architectural maquette view, hiding skybox (C)">Clay</button>
+        <button id="view-lighting" class="seg-btn" data-view-mode="lighting" type="button" aria-pressed="false" title="Lighting-only GI view: hide textures &amp; skybox, inspect Cycles GI bake (L)">Lighting</button>
+        <button id="view-wire" class="seg-btn" data-view-mode="wire" type="button" aria-pressed="false" title="Wireframe topology view, hiding skybox (G)">Wire</button>
+      </div>
+      <div id="quality-group" class="segmented-group" role="group" aria-label="Quality presets">
+        <button class="seg-btn is-active" data-quality="auto" type="button">Auto</button>
+        <button class="seg-btn" data-quality="ultra" type="button">Ultra</button>
+        <button class="seg-btn" data-quality="high" type="button">High</button>
+        <button class="seg-btn" data-quality="balanced" type="button">60F+</button>
+      </div>
+      <button id="lang-toggle" class="lang-pill" type="button" aria-label="Switch to Chinese interface" title="切换为中文界面">中文</button>
+      <a
+        id="github-pill"
+        class="icon-pill"
+        href="https://github.com/jazzenchen/agent-hud-open"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Agent HUD on GitHub"
+        title="Agent HUD on GitHub"
+      >
+        <svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+      </a>
+      <button id="help-toggle" class="icon-pill" type="button" aria-label="Controls &amp; shortcuts" title="Controls &amp; Shortcuts (H)">?</button>
+    </aside>
+
+    <!-- Subtle Photo Mode Exit Pill (only shown when Photo Mode hides HUD chrome) -->
+    <button id="photo-exit" class="photo-exit-pill" type="button" hidden>Exit Photo Mode (P / ESC)</button>
+
+    <!-- Interactive Object Hover Tooltip -->
+    <div id="interact-tooltip" class="interact-tooltip" hidden>
+      <span class="tooltip-dot"></span>
+      <span id="interact-label">Click to interact</span>
+    </div>
+
+    <!-- Compact Floating Mode Toast (shows active ARGB neon mode when pressing R!) -->
+    <div id="mode-toast" class="mode-toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- First-Person Crosshair & Hint -->
+    <div id="fp-hud" class="fp-hud" hidden>
+      <div class="fp-crosshair"></div>
+      <div id="fp-banner" class="fp-banner">First-Person Walk · WASD Move · Shift Sprint · Mouse Look · ESC / V Exit</div>
+    </div>
+
+    <!-- Bottom Floating Glass Control Dock -->
+    <nav id="hud-dock" class="hud-dock" aria-label="Scene control dock">
+      <!-- Camera Presets (All 5 Loft Zones + Key Detail Views!) -->
+      <div id="cam-group" class="dock-section" role="group" aria-label="Camera presets">
+        <button class="dock-btn is-active" data-cam="hero" type="button" title="Studio Desk (1)">Studio<kbd class="dock-kbd">1</kbd></button>
+        <button class="dock-btn" data-cam="living" type="button" title="Living Room &amp; TV (2)">Living<kbd class="dock-kbd">2</kbd></button>
+        <button class="dock-btn" data-cam="kitchen" type="button" title="Coffee Kitchen (3)">Kitchen<kbd class="dock-kbd">3</kbd></button>
+        <button class="dock-btn" data-cam="bedroom" type="button" title="Master Bedroom (4)">Bedroom<kbd class="dock-kbd">4</kbd></button>
+        <button class="dock-btn" data-cam="bathroom" type="button" title="Minimalist Spa Bath (5)">Bath<kbd class="dock-kbd">5</kbd></button>
+        <button class="dock-btn" data-cam="desk" type="button" title="Desk Macro · Shallow DoF (6)">Macro<kbd class="dock-kbd">6</kbd></button>
+        <button class="dock-btn" data-cam="window" type="button" title="Window Terrace (7)">View<kbd class="dock-kbd">7</kbd></button>
+        <button id="cam-pan-toggle" class="dock-btn cam-pan-btn is-active" type="button" aria-pressed="true" title="Slow camera arc sweep active · Click to stop">
+          <svg class="cam-pan-icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 9.5a6.5 6.5 0 0 0 11 0" />
+            <polyline points="4.8 8.2 2.4 9.5 3.8 11.8" />
+            <polyline points="11.2 8.2 13.6 9.5 12.2 11.8" />
+            <circle cx="8" cy="5" r="1.5" />
+          </svg>
+          <span id="cam-pan-label">Pan</span>
+        </button>
+      </div>
+
+      <div class="dock-divider"></div>
+
+      <!-- Lighting Moods (Baked HDR Lightmap Cross-fade + 3D Skyline + 24h Sun Blinds + PMREM) -->
+      <div id="mood-group" class="dock-section" role="group" aria-label="Time-of-day lighting">
+        <button class="dock-btn mood-btn is-active" data-mood="midnight" type="button" title="Midnight Stream (M cycle)">Midnight</button>
+        <button class="dock-btn mood-btn" data-mood="daylight" type="button" title="Morning Daylight (M cycle)">Morning</button>
+        <button class="dock-btn mood-btn" data-mood="noon" type="button" title="Clear Noon (M cycle)">Noon</button>
+        <button class="dock-btn mood-btn" data-mood="golden" type="button" title="Golden Hour (M cycle)">Golden</button>
+        <button id="mood-cycle-toggle" class="dock-btn mood-cycle-btn is-active" type="button" aria-pressed="true" title="Auto-cycling time of day · Click to stop">
+          <svg class="mood-cycle-icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M13.5 8a5.5 5.5 0 0 1-9.6 3.7" />
+            <path d="M2.5 8a5.5 5.5 0 0 1 9.6-3.7" />
+            <polyline points="12.5 2.2 12.2 4.6 9.8 4.3" />
+            <polyline points="3.5 13.8 3.8 11.4 6.2 11.7" />
+          </svg>
+          <span id="mood-cycle-label">Auto</span>
+        </button>
+      </div>
+
+      <div class="dock-divider"></div>
+
+      <!-- Actions: First-Person Walk, Smart Home Dimmer & RGB Theme -->
+      <div class="dock-section">
+        <button id="mode-toggle" class="dock-btn accent-btn" type="button" aria-pressed="false" title="Toggle First-Person WASD Walk Mode (V)">
+          Walk<kbd class="dock-kbd">V</kbd>
+        </button>
+        <button id="light-scene-cycle" class="dock-btn is-active" type="button" title="Cycle indoor lighting: All Lights / Cozy Mood / Cinema (K)">
+          Lights On<kbd class="dock-kbd">K</kbd>
+        </button>
+        <button id="screen-cycle" class="dock-btn" type="button" title="Cycle monitor displays: Agent HUD / IDE / OBS / Spectrum (T)">
+          Screen<kbd class="dock-kbd">T</kbd>
+        </button>
+        <button id="rgb-cycle" class="dock-btn is-active" type="button" title="Studio synced neon lighting: Cyber Dual-Tone · Static (1/6) (Press R for 6 modes)">
+          Cyber<kbd class="dock-kbd">R</kbd>
+        </button>
+        <button id="music-toggle" class="dock-btn music-btn is-active" type="button" aria-pressed="false" title="Playing soundtrack: Midnight Lo-Fi (synced with neon rhythm · Press B to mute)">
+          <span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="music-label">Midnight Lo-Fi</span><kbd class="dock-kbd">B</kbd>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Help Shortcut Modal -->
+    <div id="help-modal" class="help-modal" hidden>
+      <div class="help-card">
+        <div class="help-header">
+          <h2 id="help-title">Controls &amp; Shortcuts</h2>
+          <button id="help-close" class="icon-pill" type="button" aria-label="Close controls guide">×</button>
+        </div>
+        <div id="mobile-gesture-guide" class="mobile-gesture-guide">
+          <div class="gesture-grid">
+            <!-- 1. 1-Finger Drag: clear pointing hand + horizontal swipe arc -->
+            <div class="gesture-tile">
+              <svg class="gesture-svg" viewBox="0 0 96 72" fill="none" aria-hidden="true">
+                <!-- Curved swipe arrow above fingertip -->
+                <path d="M18 22 C28 11, 68 11, 78 22" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" />
+                <polyline points="23,15 17,22 25,24" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <polyline points="73,15 79,22 71,24" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <!-- Touch glow -->
+                <circle cx="46" cy="23" r="6" fill="rgba(56,189,248,0.22)" />
+                <!-- Single-finger pointing hand -->
+                <path
+                  d="M42 42 L42 23 C42 20.5 44 19 46 19 C48 19 50 20.5 50 23 L50 36
+                     C51.5 34.8 54 35 55.5 36.5 C57 35.5 59.5 36 60.5 38 C62 37.5 64 38.5 64 41
+                     L64 51 C64 58 58.5 63 51.5 63 L45 63 C39.5 63 36 59 33.5 54 L29 45.5
+                     C27.8 43.2 29 40.5 31.2 39.8 C33.2 39.2 35.2 40.2 36.5 42 L42 48 Z"
+                  fill="rgba(226,243,255,0.12)"
+                  stroke="#e2f3ff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <div class="gesture-title" data-gesture-title="orbit">1-Finger Drag</div>
+              <div class="gesture-desc" data-gesture-desc="orbit">Rotate &amp; look around 360°</div>
+            </div>
+
+            <!-- 2. 2-Finger Pinch: thumb + index pinching with diagonal zoom arrows -->
+            <div class="gesture-tile">
+              <svg class="gesture-svg" viewBox="0 0 96 72" fill="none" aria-hidden="true">
+                <!-- Diagonal zoom-out/in arrows -->
+                <path d="M22 14 L34 26 M22 22 L22 14 L30 14" stroke="#38bdf8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M74 44 L62 32 M74 36 L74 44 L66 44" stroke="#f29d4b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                <!-- Two touch dots -->
+                <circle cx="38" cy="28" r="5" fill="rgba(56,189,248,0.28)" stroke="#38bdf8" stroke-width="1.5" />
+                <circle cx="56" cy="22" r="5" fill="rgba(242,157,75,0.28)" stroke="#f29d4b" stroke-width="1.5" />
+                <!-- Pinching hand (thumb + index) -->
+                <path
+                  d="M36 31 C35 28 37.5 26 40 27.5 L47 33 L53 23 C54.5 20.5 57.5 21 58.5 23.5 C59.2 25.2 58.5 27 57 29.5 L53 38
+                     C55 37.5 57.5 38.5 58.5 40.5 C60.5 40.5 62.5 42 62.5 44.5 L62 52
+                     C61.5 58.5 56.5 63 50 63 L43 63 C37.5 63 33.5 59 32.5 53 L31 44 C30.5 40.5 32.5 37.5 35.5 37.5 L39 39 Z"
+                  fill="rgba(226,243,255,0.12)"
+                  stroke="#e2f3ff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <div class="gesture-title" data-gesture-title="zoom">2-Finger Pinch</div>
+              <div class="gesture-desc" data-gesture-desc="zoom">Zoom in &amp; out</div>
+            </div>
+
+            <!-- 3. 2-Finger Drag: two parallel raised fingers + 4-way pan arrows -->
+            <div class="gesture-tile">
+              <svg class="gesture-svg" viewBox="0 0 96 72" fill="none" aria-hidden="true">
+                <!-- 4-way pan arrows -->
+                <path d="M48 6 L48 15 M44 10 L48 6 L52 10" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M18 28 L28 28 M22 24 L18 28 L22 32" stroke="#f29d4b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M78 28 L68 28 M74 24 L78 28 L74 32" stroke="#f29d4b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <!-- Two fingertip glows -->
+                <circle cx="43" cy="23" r="4.5" fill="rgba(56,189,248,0.25)" />
+                <circle cx="52" cy="21" r="4.5" fill="rgba(56,189,248,0.25)" />
+                <!-- Two-finger hand -->
+                <path
+                  d="M39 42 L39 23 C39 20.8 40.8 19.2 43 19.2 C45.2 19.2 47 20.8 47 23 L47 36
+                     L48 21 C48 18.8 49.8 17.2 52 17.2 C54.2 17.2 56 18.8 56 21 L56 38
+                     C57.8 36.8 60.2 37.5 61.2 39.5 C63 39.2 64.8 40.5 64.8 43 L64.8 51
+                     C64.8 58 59.5 63 52.5 63 L45 63 C39.5 63 35.8 59 33.5 54 L29.5 46
+                     C28.4 43.8 29.6 41.2 31.8 40.6 C33.8 40 35.6 41.2 37 43 L39 46 Z"
+                  fill="rgba(226,243,255,0.12)"
+                  stroke="#e2f3ff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <div class="gesture-title" data-gesture-title="pan">2-Finger Drag</div>
+              <div class="gesture-desc" data-gesture-desc="pan">Pan camera freely</div>
+            </div>
+
+            <!-- 4. Tap Objects: pointing finger tapping a glowing lamp/screen target -->
+            <div class="gesture-tile">
+              <svg class="gesture-svg" viewBox="0 0 96 72" fill="none" aria-hidden="true">
+                <!-- Target tap ripples -->
+                <circle cx="46" cy="22" r="14" stroke="rgba(242,157,75,0.3)" stroke-width="1.6" stroke-dasharray="3 3" />
+                <circle cx="46" cy="22" r="8.5" stroke="#f29d4b" stroke-width="2" />
+                <circle cx="46" cy="22" r="3.5" fill="#f29d4b" />
+                <!-- Single-finger tapping hand -->
+                <path
+                  d="M42 44 L42 25 C42 22.5 44 21 46 21 C48 21 50 22.5 50 25 L50 38
+                     C51.5 36.8 54 37 55.5 38.5 C57 37.5 59.5 38 60.5 40 C62 39.5 64 40.5 64 43
+                     L64 52 C64 58.5 58.5 63 51.5 63 L45 63 C39.5 63 36 59 33.5 54 L29.5 46.5
+                     C28.3 44.2 29.5 41.5 31.7 40.8 C33.7 40.2 35.5 41.2 36.8 43 L42 49 Z"
+                  fill="rgba(226,243,255,0.12)"
+                  stroke="#e2f3ff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <div class="gesture-title" data-gesture-title="tap">Tap Objects</div>
+              <div class="gesture-desc" data-gesture-desc="tap">Toggle lights &amp; screens</div>
+            </div>
+          </div>
+          <div class="gesture-tip" id="gesture-tip">Use the bottom dock to switch views, lighting moods &amp; music</div>
+        </div>
+
+        <ul id="help-list" class="help-list">
+          <li><strong>鼠标拖拽 / 滚轮</strong>：左键环视、滚轮缩放、右键平移（按 V 切换 WASD 漫游）</li>
+          <li><strong>数字 1~7 · 快捷键 M</strong>：切换全屋 7 个电影机位与 24 小时四时段光照</li>
+          <li><strong>点击场景物体</strong>：点电脑或电视直达 agenthud.app，点灯具开关照明</li>
+          <li><strong>K / R / B / P</strong>：K 切照明 · R 切霓虹 · B 开关配乐 · P 纯净摄影</li>
+        </ul>
+
+        <button id="help-got-it" class="gesture-cta" type="button">♪ Start Exploring</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

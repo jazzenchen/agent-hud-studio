@@ -1,0 +1,31 @@
+{
+  "name": "agenthud-studio",
+  "version": "1.0.0",
+  "description": "3D interactive Geek Industrial Loft showcase built with Antigravity, Blender Cycles RGBM lightmap baking, and Three.js — powered by Agent HUD for cross-session coordination.",
+  "license": "MIT",
+  "homepage": "https://studio.agenthud.app",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "assets:fetch:polyhaven": "python3 pipeline/fetch_polyhaven.py --phase all",
+    "assets:fetch:blenderkit": "python3 pipeline/fetch_blenderkit.py --phase all",
+    "pipeline:loft": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/build_full_loft.py",
+    "pipeline:loft:bake": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/bake_full_loft.py",
+    "pipeline:studio": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/build_studio_slice.py",
+    "pipeline:studio:render": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/render_studio_gate1.py",
+    "pipeline:studio:bake": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/bake_studio_slice.py"
+  },
+  "dependencies": {
+    "n8ao": "^2.1.0",
+    "postprocessing": "^6.36.7",
+    "three": "^0.174.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.174.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2"
+  }
+}

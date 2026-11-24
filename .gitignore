@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.wrangler/
+assets/cache/
+assets/blend/
+assets/audio_raw/
+public/assets/full_loft.glb
+public/assets/audio/
+public/assets/sky/
+exports/
+renders/
+pipeline/__pycache__/
+*.pyc
+*.blend1
+.env
+.env.*
+.DS_Store

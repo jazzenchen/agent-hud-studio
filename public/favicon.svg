@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- AStudio: four cells of the studio's neon hexagon wall on a dark tile -->
+  <defs>
+    <linearGradient id="tile" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a1f2b"/><stop offset="1" stop-color="#07090e"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#tile)"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="13.25" stroke="#ffffff" stroke-opacity=".1" stroke-width="1.5"/>
+  <g filter="url(#glow)">
+    <polygon points="24.72,27.50 20.56,34.70 12.24,34.70 8.08,27.50 12.24,20.29 20.56,20.29" stroke="#7fe6ff" stroke-width="3.0" stroke-linejoin="round"/>
+    <polygon points="40.32,18.49 36.16,25.70 27.84,25.70 23.68,18.49 27.84,11.28 36.16,11.28" stroke="#ffb08a" stroke-width="3.0" stroke-linejoin="round"/>
+    <polygon points="40.32,36.50 36.16,43.71 27.84,43.71 23.68,36.50 27.84,29.30 36.16,29.30" fill="#eaf8ff" stroke="#f4fbff" stroke-width="3.0" stroke-linejoin="round"/>
+    <polygon points="55.92,27.50 51.76,34.70 43.44,34.70 39.28,27.50 43.44,20.29 51.76,20.29" stroke="#7fe6ff" stroke-width="3.0" stroke-linejoin="round"/>
+  </g>
+</svg>

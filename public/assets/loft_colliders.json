@@ -1,0 +1,202 @@
+[
+  {
+    "name": "loft_outer_bounds",
+    "type": "bounds",
+    "minX": -1.96,
+    "maxX": 9.2,
+    "minZ": -1.85,
+    "maxZ": 5.24
+  },
+  {
+    "name": "standing_desk",
+    "type": "box",
+    "minX": -1.36,
+    "maxX": 0.92,
+    "minZ": -1.98,
+    "maxZ": -1.04
+  },
+  {
+    "name": "studio_bookshelf_spine",
+    "type": "box",
+    "minX": 1.76,
+    "maxX": 2.38,
+    "minZ": -2.02,
+    "maxZ": 1.54
+  },
+  {
+    "name": "studio_lounge_chair",
+    "type": "box",
+    "minX": -1.98,
+    "maxX": -1.04,
+    "minZ": 0.58,
+    "maxZ": 1.54
+  },
+  {
+    "name": "portal_pier_w",
+    "type": "box",
+    "minX": -2.2,
+    "maxX": -1.48,
+    "minZ": 1.84,
+    "maxZ": 2.06
+  },
+  {
+    "name": "portal_pier_e",
+    "type": "box",
+    "minX": 1.44,
+    "maxX": 2.34,
+    "minZ": 1.84,
+    "maxZ": 2.06
+  },
+  {
+    "name": "living_sofa",
+    "type": "box",
+    "minX": -0.45,
+    "maxX": 2.25,
+    "minZ": 2.52,
+    "maxZ": 3.44
+  },
+  {
+    "name": "living_loafer_chair",
+    "type": "box",
+    "minX": 2.52,
+    "maxX": 3.36,
+    "minZ": 3.06,
+    "maxZ": 3.9
+  },
+  {
+    "name": "entry_foyer_console",
+    "type": "box",
+    "minX": 2.74,
+    "maxX": 3.44,
+    "minZ": 5.04,
+    "maxZ": 5.45
+  },
+  {
+    "name": "living_coffee_table",
+    "type": "box",
+    "minX": 0.37,
+    "maxX": 1.43,
+    "minZ": 3.86,
+    "maxZ": 4.58
+  },
+  {
+    "name": "living_nested_table",
+    "type": "box",
+    "minX": 1.5,
+    "maxX": 2.02,
+    "minZ": 3.84,
+    "maxZ": 4.34
+  },
+  {
+    "name": "living_media_console",
+    "type": "box",
+    "minX": -0.9,
+    "maxX": 2.75,
+    "minZ": 4.96,
+    "maxZ": 5.45
+  },
+  {
+    "name": "kitchen_north_counter",
+    "type": "box",
+    "minX": 2.42,
+    "maxX": 6.38,
+    "minZ": -2.05,
+    "maxZ": -1.36
+  },
+  {
+    "name": "kitchen_marble_island",
+    "type": "box",
+    "minX": 2.98,
+    "maxX": 5.52,
+    "minZ": -0.3,
+    "maxZ": 0.86
+  },
+  {
+    "name": "fluted_glass_fixed",
+    "type": "box",
+    "minX": 4.58,
+    "maxX": 4.78,
+    "minZ": 3.16,
+    "maxZ": 5.45
+  },
+  {
+    "name": "wall_kit_bath",
+    "type": "box",
+    "minX": 6.36,
+    "maxX": 6.56,
+    "minZ": -2.05,
+    "maxZ": 1.54
+  },
+  {
+    "name": "wall_kit_bed",
+    "type": "box",
+    "minX": 4.66,
+    "maxX": 6.46,
+    "minZ": 1.37,
+    "maxZ": 1.54
+  },
+  {
+    "name": "wall_bath_door_l",
+    "type": "box",
+    "minX": 6.42,
+    "maxX": 7.16,
+    "minZ": 1.37,
+    "maxZ": 1.54
+  },
+  {
+    "name": "wall_bath_door_r",
+    "type": "box",
+    "minX": 8.16,
+    "maxX": 9.45,
+    "minZ": 1.37,
+    "maxZ": 1.54
+  },
+  {
+    "name": "master_bed",
+    "type": "box",
+    "minX": 7.06,
+    "maxX": 9.42,
+    "minZ": 2.38,
+    "maxZ": 4.52
+  },
+  {
+    "name": "bedroom_bench",
+    "type": "box",
+    "minX": 6.34,
+    "maxX": 6.78,
+    "minZ": 2.72,
+    "maxZ": 4.18
+  },
+  {
+    "name": "bedroom_wardrobe",
+    "type": "box",
+    "minX": 4.94,
+    "maxX": 8.32,
+    "minZ": 4.82,
+    "maxZ": 5.45
+  },
+  {
+    "name": "spa_bathtub",
+    "type": "box",
+    "minX": 7.56,
+    "maxX": 9.22,
+    "minZ": -1.85,
+    "maxZ": -1.04
+  },
+  {
+    "name": "spa_vanity",
+    "type": "box",
+    "minX": 8.86,
+    "maxX": 9.42,
+    "minZ": -0.78,
+    "maxZ": 0.42
+  },
+  {
+    "name": "spa_shower_glass",
+    "type": "box",
+    "minX": 7.3,
+    "maxX": 7.42,
+    "minZ": -0.48,
+    "maxZ": 0.64
+  }
+]
