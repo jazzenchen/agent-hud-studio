@@ -38,7 +38,8 @@ export function classifyProbeZone(worldCenter: THREE.Vector3, meshName: string):
 
 /**
  * Zero-Flash, Zero-Stutter Per-Room Local Indoor Reflection Probes (PMREM):
- * 1. Pre-bakes all 4 moods x 4 rooms (16 CubeUV PMREM atlases) ONCE during the loading curtain.
+ * 1. Bakes the initial mood's 4 room probes during the loading curtain; the other 3 moods are baked one
+ *    room per frame after the first frame (or immediately, if the user picks one of them first).
  * 2. Binds 4 persistent active CubeUV WebGLRenderTargets to room materials ONCE at startup (NEVER swaps mat.envMap or calls mat.needsUpdate!).
  * 3. During any 1.15s mood switch, smoothly cross-fades all 4 room PMREM atlases + scene.environment frame-by-frame
  *    via a lightweight 2D linear HalfFloat blend quad (~0.10ms/frame during transition, 0.00ms when settled!).
@@ -51,6 +52,8 @@ export class IndoorReflectionProbes {
   private readonly cubeCam: THREE.CubeCamera;
 
   private readonly cachedProbes = new Map<MoodId, Map<ProbeZoneId, THREE.WebGLRenderTarget>>();
+  /** Moods with some, but not all, room probes baked (not yet blendable). */
+  private readonly partialProbes = new Map<MoodId, Map<ProbeZoneId, THREE.WebGLRenderTarget>>();
   private readonly activeTargets = new Map<ProbeZoneId, THREE.WebGLRenderTarget>();
   private activeSceneEnvTarget: THREE.WebGLRenderTarget | null = null;
 
@@ -212,15 +215,32 @@ export class IndoorReflectionProbes {
     }
   }
 
+  /** True once all 4 room probes for this mood are baked and blendable. */
+  public hasMood(mood: MoodId): boolean {
+    return this.cachedProbes.has(mood);
+  }
+
+  /** True once every mood is baked (the background queue is empty). */
+  public isFullyBaked(): boolean {
+    return ALL_MOODS.every((m) => this.cachedProbes.has(m));
+  }
+
+  private nextPendingBake(): { mood: MoodId; zone: ProbeZoneId } | null {
+    for (const mood of ALL_MOODS) {
+      if (this.cachedProbes.has(mood)) continue;
+      const partial = this.partialProbes.get(mood);
+      for (const zone of ALL_ZONES) {
+        if (!partial?.has(zone)) return { mood, zone };
+      }
+    }
+    return null;
+  }
+
   /**
-   * Pre-bake all 4 moods x 4 rooms ONCE during loading curtain so runtime mood switching NEVER runs CubeCamera!
+   * Runs `fn` with renderer state saved and architectural mirror meshes hidden, then restores both.
+   * Planar Reflectors must not exist yet when this runs, or CubeCameras would recurse into them.
    */
-  public prebakeAllMoods(
-    scene: THREE.Scene,
-    applyMoodForBake: (mood: MoodId) => void,
-    getSceneEnvTex: (mood: MoodId) => THREE.Texture | null,
-    initialMood: MoodId = 'midnight'
-  ): void {
+  private withBakeState(fn: () => void): void {
     const prevTarget = this.renderer.getRenderTarget();
     const prevAutoShadow = this.renderer.shadowMap.autoUpdate;
     const prevAutoClear = this.renderer.autoClear;
@@ -233,22 +253,85 @@ export class IndoorReflectionProbes {
     const prevMirrorVis = this.mirrorMeshes.map((m) => m.visible);
     for (const m of this.mirrorMeshes) m.visible = false;
 
-    for (const mood of ALL_MOODS) {
-      applyMoodForBake(mood);
-      const moodMap = new Map<ProbeZoneId, THREE.WebGLRenderTarget>();
-      for (const z of ALL_ZONES) {
-        this.cubeCam.position.copy(PROBE_POSITIONS[z]);
-        this.cubeCam.update(this.renderer, scene);
-        const pmremRT = this.pmremGen.fromCubemap(this.cubeRT.texture);
-        moodMap.set(z, pmremRT);
+    try {
+      fn();
+    } finally {
+      for (let i = 0; i < this.mirrorMeshes.length; i++) {
+        this.mirrorMeshes[i].visible = prevMirrorVis[i];
       }
-      this.cachedProbes.set(mood, moodMap);
+      this.renderer.autoClear = prevAutoClear;
+      this.renderer.shadowMap.autoUpdate = prevAutoShadow;
+      this.renderer.setRenderTarget(prevTarget);
+      this.renderer.setViewport(prevViewport);
+      this.renderer.setScissorTest(prevScissorTest);
+      this.renderer.shadowMap.needsUpdate = true;
     }
+  }
 
-    for (let i = 0; i < this.mirrorMeshes.length; i++) {
-      this.mirrorMeshes[i].visible = prevMirrorVis[i];
+  /** Bakes one room probe for whichever mood is currently applied to the scene. */
+  private bakeZoneRaw(scene: THREE.Scene, mood: MoodId, zone: ProbeZoneId): void {
+    this.cubeCam.position.copy(PROBE_POSITIONS[zone]);
+    this.cubeCam.update(this.renderer, scene);
+    const pmremRT = this.pmremGen.fromCubemap(this.cubeRT.texture);
+    let partial = this.partialProbes.get(mood);
+    if (!partial) {
+      partial = new Map();
+      this.partialProbes.set(mood, partial);
     }
+    partial.get(zone)?.dispose();
+    partial.set(zone, pmremRT);
+    if (ALL_ZONES.every((z) => partial!.has(z))) {
+      this.cachedProbes.set(mood, partial);
+      this.partialProbes.delete(mood);
+    }
+  }
 
+  private bakeMoodRaw(scene: THREE.Scene, mood: MoodId): void {
+    for (const z of ALL_ZONES) {
+      if (this.partialProbes.get(mood)?.has(z)) continue;
+      this.bakeZoneRaw(scene, mood, z);
+    }
+  }
+
+  /**
+   * Startup bake: only the initial mood's 4 room probes, so the first frame is not held up by the
+   * other 3 moods. The rest are baked later by bakeNextZone() / bakeMoodNow().
+   */
+  public bakeInitialMood(
+    scene: THREE.Scene,
+    applyMoodForBake: (mood: MoodId) => void,
+    getSceneEnvTex: (mood: MoodId) => THREE.Texture | null,
+    initialMood: MoodId = 'midnight'
+  ): void {
+    this.withBakeState(() => {
+      applyMoodForBake(initialMood);
+      this.bakeMoodRaw(scene, initialMood);
+    });
+    this.allocateActiveTargets(scene, initialMood, getSceneEnvTex);
+  }
+
+  /** Previous behaviour: bake all 4 moods x 4 rooms before the first frame. */
+  public prebakeAllMoods(
+    scene: THREE.Scene,
+    applyMoodForBake: (mood: MoodId) => void,
+    getSceneEnvTex: (mood: MoodId) => THREE.Texture | null,
+    initialMood: MoodId = 'midnight'
+  ): void {
+    this.withBakeState(() => {
+      for (const mood of ALL_MOODS) {
+        applyMoodForBake(mood);
+        this.bakeMoodRaw(scene, mood);
+      }
+      applyMoodForBake(initialMood);
+    });
+    this.allocateActiveTargets(scene, initialMood, getSceneEnvTex);
+  }
+
+  private allocateActiveTargets(
+    scene: THREE.Scene,
+    initialMood: MoodId,
+    getSceneEnvTex: (mood: MoodId) => THREE.Texture | null
+  ): void {
     // Allocate persistent active PMREM targets ONCE and bind permanently to room materials (NEVER swapped again!)
     const templateRT = this.cachedProbes.get(initialMood)!.get('west')!;
     for (const z of ALL_ZONES) {
@@ -261,18 +344,44 @@ export class IndoorReflectionProbes {
     }
     this.activeSceneEnvTarget = this.createMatchingPmremTarget(templateRT);
 
-    // Restore initial mood and populate persistent targets cleanly
-    applyMoodForBake(initialMood);
     this.initialized = true;
     this.blendMood(initialMood, initialMood, 1.0, getSceneEnvTex(initialMood), getSceneEnvTex(initialMood));
     scene.environment = this.activeSceneEnvTarget.texture;
+  }
 
-    this.renderer.autoClear = prevAutoClear;
-    this.renderer.shadowMap.autoUpdate = prevAutoShadow;
-    this.renderer.setRenderTarget(prevTarget);
-    this.renderer.setViewport(prevViewport);
-    this.renderer.setScissorTest(prevScissorTest);
-    this.renderer.shadowMap.needsUpdate = true;
+  /**
+   * Background step: bakes ONE room probe of the next unbaked mood, then hands the scene back via
+   * `restoreLiveMood`. Call only while no mood transition is running. Returns the mood that became
+   * fully baked on this step, if any.
+   */
+  public bakeNextZone(
+    scene: THREE.Scene,
+    applyMoodForBake: (mood: MoodId) => void,
+    restoreLiveMood: () => void
+  ): MoodId | null {
+    const next = this.nextPendingBake();
+    if (!next) return null;
+    this.withBakeState(() => {
+      applyMoodForBake(next.mood);
+      this.bakeZoneRaw(scene, next.mood, next.zone);
+      restoreLiveMood();
+    });
+    return this.cachedProbes.has(next.mood) ? next.mood : null;
+  }
+
+  /** On-demand bake of a whole mood (e.g. the user picked a preset whose probes are not ready yet). */
+  public bakeMoodNow(
+    scene: THREE.Scene,
+    mood: MoodId,
+    applyMoodForBake: (mood: MoodId) => void,
+    restoreLiveMood: () => void
+  ): void {
+    if (this.cachedProbes.has(mood)) return;
+    this.withBakeState(() => {
+      applyMoodForBake(mood);
+      this.bakeMoodRaw(scene, mood);
+      restoreLiveMood();
+    });
   }
 
   /**
@@ -336,6 +445,10 @@ export class IndoorReflectionProbes {
       for (const rt of moodMap.values()) rt.dispose();
     }
     this.cachedProbes.clear();
+    for (const moodMap of this.partialProbes.values()) {
+      for (const rt of moodMap.values()) rt.dispose();
+    }
+    this.partialProbes.clear();
     for (const rt of this.activeTargets.values()) rt.dispose();
     this.activeTargets.clear();
     this.activeSceneEnvTarget?.dispose();

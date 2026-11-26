@@ -95,6 +95,13 @@ export class GeekLoftApp {
   private readonly dracoLoader: DRACOLoader;
   private readonly clock = new THREE.Clock();
   private rafId = 0;
+  private frameCount = 0;
+  /** `?probes=eager` bakes every mood's reflection probes before the first frame (old behaviour). */
+  private readonly probesEager = new URLSearchParams(window.location.search).get('probes') === 'eager';
+  private probesReadyMarked = false;
+  private readonly timings: Partial<Record<'first-frame' | 'first-input' | 'camera-responded' | 'probes-ready', number>> = {};
+  private pendingInputCamPos: THREE.Vector3 | null = null;
+  private pendingInputCamQuat: THREE.Quaternion | null = null;
 
   // Time-of-day automatic cycle (Midnight -> Morning -> Noon -> Golden)
   private readonly moodOrder: MoodId[] = ['midnight', 'daylight', 'noon', 'golden'];
@@ -430,6 +437,7 @@ export class GeekLoftApp {
         this.selectMoodManually(m);
       },
       setMoodAutoCycle: (enabled: boolean) => this.setMoodAutoCycle(enabled, false),
+      getTimings: () => ({ probes: this.probesEager ? 'eager' : 'deferred', ...this.timings }),
       setCamera: (c: CameraPresetId, instant = false) =>
         this.cameraCtrl.flyToPreset(c, instant),
       setRawCamera: (pos: [number, number, number], target: [number, number, number], fov = 42) =>
@@ -531,10 +539,12 @@ export class GeekLoftApp {
         setMoodTransitionDuration: (sec: number) => this.moodSystem.setTransitionDuration(sec),
         snapMood: (m: 'midnight' | 'golden' | 'daylight' | 'noon') => {
           this.hud.setActiveMood(m);
+          this.ensureProbesFor(m);
           this.moodSystem.snapMood(m);
         },
         setMood: (m: 'midnight' | 'golden' | 'daylight' | 'noon') => {
           this.hud.setActiveMood(m);
+          this.ensureProbesFor(m);
           this.moodSystem.setMood(m);
         },
         setRgbMode: (idx: number) => {
@@ -569,12 +579,23 @@ export class GeekLoftApp {
     };
 
     this.hud.setLoading(96, this.hud.getMessages().loading.probes);
-    this.indoorProbes.prebakeAllMoods(
-      this.scene,
-      (m) => this.moodSystem.applyImmediateForBake(m),
-      (m) => this.moodSystem.getSkyPmrem(m),
-      'midnight'
-    );
+    // Default: bake only the starting mood's reflections now; the other moods bake after the first frame.
+    // `?probes=eager` restores the old all-moods-up-front bake for A/B timing.
+    if (this.probesEager) {
+      this.indoorProbes.prebakeAllMoods(
+        this.scene,
+        (m) => this.moodSystem.applyImmediateForBake(m),
+        (m) => this.moodSystem.getSkyPmrem(m),
+        'midnight'
+      );
+    } else {
+      this.indoorProbes.bakeInitialMood(
+        this.scene,
+        (m) => this.moodSystem.applyImmediateForBake(m),
+        (m) => this.moodSystem.getSkyPmrem(m),
+        'midnight'
+      );
+    }
     this.moodSystem.setOnMoodBlend((from, to, t, envA, envB) => {
       if (!this.pureClayMode && !this.wireframeMode) {
         this.indoorProbes.blendMood(from, to, t, envA, envB);
@@ -582,14 +603,22 @@ export class GeekLoftApp {
     }, true);
 
     // Install TRUE real-time planar mirrors (Spa Bathroom Circular Mirror + Bedroom Full-Length Dressing Mirror)
-    // AFTER prebakeAllMoods so CubeCameras never recurse into planar Reflectors!
-    this.setupRealPlanarMirrors();
+    // only once every mood's probes are baked, so CubeCameras never recurse into planar Reflectors!
+    // In deferred mode stepBackgroundProbeBake() installs them when the last mood finishes.
+    if (this.indoorProbes.isFullyBaked()) {
+      this.setupRealPlanarMirrors();
+      this.markTiming('probes-ready');
+    }
+
 
     this.hud.setLoading(98, this.hud.getMessages().loading.warmup);
     this.postFx.warmup();
 
     this.hud.setLoading(100, this.hud.getMessages().loading.ready);
     this.audioEngine.prefetch();
+    for (const ev of ['pointerdown', 'wheel', 'keydown', 'touchstart'] as const) {
+      window.addEventListener(ev, this.onFirstUserInput, { capture: true, passive: true });
+    }
     requestAnimationFrame(() => {
       this.clock.start();
       this.loop();
@@ -1655,6 +1684,7 @@ export class GeekLoftApp {
   private applyMood(id: MoodId, syncAudio: boolean): void {
     this.currentMood = id;
     this.hud.setActiveMood(id);
+    this.ensureProbesFor(id);
     this.moodSystem.setMood(id);
     if (syncAudio) {
       this.audioEngine.setMood(id);
@@ -1714,7 +1744,108 @@ export class GeekLoftApp {
     this.renderer.info.reset();
     this.postFx.render(delta);
     this.perf.tick(delta);
+
+    this.frameCount++;
+    if (this.frameCount === 1) this.markTiming('first-frame');
+    this.checkCameraResponded();
+    this.stepBackgroundProbeBake();
   };
+
+  // ---- Deferred reflection probes -------------------------------------------------------------
+
+  /** Probes must only be baked with the normal materials on screen (not clay / wireframe / lighting-only). */
+  private canBakeProbes(): boolean {
+    return !this.pureClayMode && !this.wireframeMode && !this.lightingOnlyMode;
+  }
+
+  /** Puts the scene back on `mood` after a probe bake applied another mood to it. */
+  private restoreLiveMood(mood: MoodId): void {
+    this.moodSystem.applyImmediateForBake(mood);
+    const env = this.indoorProbes.getActiveSceneEnvTexture();
+    if (env) this.scene.environment = env;
+  }
+
+  /**
+   * Called before every mood switch: if the target mood's probes have not been baked in the
+   * background yet, bake them now (one short hitch) so the switch still blends reflections.
+   */
+  private ensureProbesFor(mood: MoodId): void {
+    if (!this.canBakeProbes()) return;
+    const live = this.moodSystem.getCurrentMood();
+    // Both ends of the blend need probes (the live one can be missing if it was picked in clay mode).
+    for (const m of live === mood ? [mood] : [live, mood]) {
+      if (this.indoorProbes.hasMood(m)) continue;
+      this.indoorProbes.bakeMoodNow(
+        this.scene,
+        m,
+        (x) => this.moodSystem.applyImmediateForBake(x),
+        () => this.restoreLiveMood(live)
+      );
+      this.onProbeMoodBaked(m);
+    }
+  }
+
+  /** Bakes one room probe every other frame once the first frame is on screen, while no mood transition runs. */
+  private stepBackgroundProbeBake(): void {
+    if (this.probesReadyMarked) return;
+    if (this.frameCount < 2 || this.frameCount % 2 !== 0) return;
+    if (!this.canBakeProbes() || this.moodSystem.isTransitioning()) return;
+    const live = this.moodSystem.getCurrentMood();
+    const done = this.indoorProbes.bakeNextZone(
+      this.scene,
+      (m) => this.moodSystem.applyImmediateForBake(m),
+      () => this.restoreLiveMood(live)
+    );
+    if (done) this.onProbeMoodBaked(done);
+  }
+
+  private onProbeMoodBaked(mood: MoodId): void {
+    // If we were showing this mood without its probes (e.g. switched while in clay mode), sync them now.
+    const live = this.moodSystem.getCurrentMood();
+    if (mood === live && !this.moodSystem.isTransitioning() && this.canBakeProbes()) {
+      const env = this.moodSystem.getSkyPmrem(live);
+      this.indoorProbes.blendMood(live, live, 1.0, env, env);
+    }
+    if (!this.probesReadyMarked && this.indoorProbes.isFullyBaked()) {
+      this.setupRealPlanarMirrors();
+      this.markTiming('probes-ready');
+    }
+  }
+
+  // ---- Startup timing marks (performance.mark, readable via __ASTUDIO__.getTimings()) ------------
+
+  private markTiming(name: 'first-frame' | 'first-input' | 'camera-responded' | 'probes-ready'): void {
+    if (name === 'probes-ready') this.probesReadyMarked = true;
+    if (this.timings[name] !== undefined) return;
+    this.timings[name] = Math.round(performance.now());
+    performance.mark(`astudio:${name}`);
+    console.info(`[astudio] ${name} at ${this.timings[name]} ms (probes: ${this.probesEager ? 'eager' : 'deferred'})`);
+  }
+
+  private readonly onFirstUserInput = (): void => {
+    if (this.pendingInputCamPos || this.timings['camera-responded'] !== undefined) return;
+    const cam = this.cameraCtrl.camera;
+    this.pendingInputCamPos = cam.position.clone();
+    this.pendingInputCamQuat = cam.quaternion.clone();
+    this.markTiming('first-input');
+  };
+
+  /** Marks the first frame where the camera moved after a user input. */
+  private checkCameraResponded(): void {
+    if (!this.pendingInputCamPos || !this.pendingInputCamQuat) return;
+    const cam = this.cameraCtrl.camera;
+    if (
+      cam.position.distanceToSquared(this.pendingInputCamPos) > 1e-8 ||
+      1 - Math.abs(cam.quaternion.dot(this.pendingInputCamQuat)) > 1e-8
+    ) {
+      this.pendingInputCamPos = null;
+      this.pendingInputCamQuat = null;
+      this.markTiming('camera-responded');
+      for (const ev of ['pointerdown', 'wheel', 'keydown', 'touchstart'] as const) {
+        window.removeEventListener(ev, this.onFirstUserInput, true);
+      }
+    }
+  }
 
   public dispose(): void {
     cancelAnimationFrame(this.rafId);

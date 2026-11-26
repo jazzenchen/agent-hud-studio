@@ -644,6 +644,10 @@ export class MoodSystem {
     return this.currentMood;
   }
 
+  public isTransitioning(): boolean {
+    return this.transitionT < 1.0;
+  }
+
   public setTransitionDuration(seconds: number): void {
     this.transitionDuration = Math.max(0.05, seconds);
   }
