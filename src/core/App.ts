@@ -5,7 +5,7 @@ import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { DynamicScreenRenderer } from './DynamicScreenRenderer';
 import { GroundedContactShadows, IndoorReflectionProbes } from './IndoorProbesAndShadows';
 import { patchMaterialWithRgbMLightmap } from './LightmapMaterialPatch';
-import { MoodSystem, type MoodId } from './MoodSystem';
+import { HDR_RES, MoodSystem, SKIES_EAGER, startupSkyBytesDelta, type MoodId } from './MoodSystem';
 import { PerformanceGovernor } from './PerformanceGovernor';
 import { PostProcessingPipeline } from './PostProcessing';
 import { StudioAudioEngine } from './StudioAudioEngine';
@@ -99,7 +99,9 @@ export class GeekLoftApp {
   /** `?probes=eager` bakes every mood's reflection probes before the first frame (old behaviour). */
   private readonly probesEager = new URLSearchParams(window.location.search).get('probes') === 'eager';
   private probesReadyMarked = false;
-  private readonly timings: Partial<Record<'first-frame' | 'first-input' | 'camera-responded' | 'probes-ready', number>> = {};
+  private readonly timings: Partial<Record<'first-frame' | 'first-input' | 'camera-responded' | 'skies-ready' | 'probes-ready', number>> = {};
+  /** A preset the user picked whose sky HDR is still downloading; applied as soon as it arrives. */
+  private pendingMood: { id: MoodId; syncAudio: boolean } | null = null;
   private pendingInputCamPos: THREE.Vector3 | null = null;
   private pendingInputCamQuat: THREE.Quaternion | null = null;
 
@@ -380,7 +382,8 @@ export class GeekLoftApp {
   }
 
   public async init(): Promise<void> {
-    const STARTUP_TOTAL_BYTES = 89_311_109;
+    // Estimate assumes all three 2K sky HDRs; adjusted for ?hdr=1k and for the HDRs deferred past the first frame.
+    const STARTUP_TOTAL_BYTES = 89_311_109 + startupSkyBytesDelta();
     let loftLoadedBytes = 0;
     let loftTotalBytes = 11_993_036;
 
@@ -437,7 +440,12 @@ export class GeekLoftApp {
         this.selectMoodManually(m);
       },
       setMoodAutoCycle: (enabled: boolean) => this.setMoodAutoCycle(enabled, false),
-      getTimings: () => ({ probes: this.probesEager ? 'eager' : 'deferred', ...this.timings }),
+      getTimings: () => ({
+        probes: this.probesEager ? 'eager' : 'deferred',
+        skies: SKIES_EAGER ? 'eager' : 'deferred',
+        hdr: HDR_RES,
+        ...this.timings,
+      }),
       setCamera: (c: CameraPresetId, instant = false) =>
         this.cameraCtrl.flyToPreset(c, instant),
       setRawCamera: (pos: [number, number, number], target: [number, number, number], fov = 42) =>
@@ -537,16 +545,14 @@ export class GeekLoftApp {
           }
         },
         setMoodTransitionDuration: (sec: number) => this.moodSystem.setTransitionDuration(sec),
-        snapMood: (m: 'midnight' | 'golden' | 'daylight' | 'noon') => {
+        snapMood: async (m: 'midnight' | 'golden' | 'daylight' | 'noon') => {
           this.hud.setActiveMood(m);
+          void this.moodSystem.loadDeferredSkies();
+          await this.moodSystem.whenMoodReady(m);
           this.ensureProbesFor(m);
           this.moodSystem.snapMood(m);
         },
-        setMood: (m: 'midnight' | 'golden' | 'daylight' | 'noon') => {
-          this.hud.setActiveMood(m);
-          this.ensureProbesFor(m);
-          this.moodSystem.setMood(m);
-        },
+        setMood: (m: 'midnight' | 'golden' | 'daylight' | 'noon') => this.applyMood(m, false),
         setRgbMode: (idx: number) => {
           const pal = this.moodSystem.setRgbMode(idx);
           this.hud.setRgbMode(pal.id);
@@ -1684,6 +1690,24 @@ export class GeekLoftApp {
   private applyMood(id: MoodId, syncAudio: boolean): void {
     this.currentMood = id;
     this.hud.setActiveMood(id);
+    if (!this.moodSystem.isMoodReady(id)) {
+      // Its sky HDR is still downloading: keep showing the current preset (and its reflections)
+      // and switch the moment the HDR lands. A later pick replaces this one.
+      this.pendingMood = { id, syncAudio };
+      void this.moodSystem.loadDeferredSkies();
+      void this.moodSystem.whenMoodReady(id).then(() => {
+        if (this.pendingMood?.id !== id) return;
+        const { syncAudio: sync } = this.pendingMood;
+        this.pendingMood = null;
+        this.commitMood(id, sync);
+      });
+      return;
+    }
+    this.pendingMood = null;
+    this.commitMood(id, syncAudio);
+  }
+
+  private commitMood(id: MoodId, syncAudio: boolean): void {
     this.ensureProbesFor(id);
     this.moodSystem.setMood(id);
     if (syncAudio) {
@@ -1746,7 +1770,11 @@ export class GeekLoftApp {
     this.perf.tick(delta);
 
     this.frameCount++;
-    if (this.frameCount === 1) this.markTiming('first-frame');
+    if (this.frameCount === 1) {
+      this.markTiming('first-frame');
+      // Scene is up: now fetch the sky HDRs for the other presets.
+      void this.moodSystem.loadDeferredSkies().then(() => this.markTiming('skies-ready'));
+    }
     this.checkCameraResponded();
     this.stepBackgroundProbeBake();
   };
@@ -1774,7 +1802,7 @@ export class GeekLoftApp {
     const live = this.moodSystem.getCurrentMood();
     // Both ends of the blend need probes (the live one can be missing if it was picked in clay mode).
     for (const m of live === mood ? [mood] : [live, mood]) {
-      if (this.indoorProbes.hasMood(m)) continue;
+      if (this.indoorProbes.hasMood(m) || !this.moodSystem.isMoodReady(m)) continue;
       this.indoorProbes.bakeMoodNow(
         this.scene,
         m,
@@ -1794,7 +1822,8 @@ export class GeekLoftApp {
     const done = this.indoorProbes.bakeNextZone(
       this.scene,
       (m) => this.moodSystem.applyImmediateForBake(m),
-      () => this.restoreLiveMood(live)
+      () => this.restoreLiveMood(live),
+      (m) => this.moodSystem.isMoodReady(m)
     );
     if (done) this.onProbeMoodBaked(done);
   }
@@ -1814,12 +1843,12 @@ export class GeekLoftApp {
 
   // ---- Startup timing marks (performance.mark, readable via __ASTUDIO__.getTimings()) ------------
 
-  private markTiming(name: 'first-frame' | 'first-input' | 'camera-responded' | 'probes-ready'): void {
+  private markTiming(name: 'first-frame' | 'first-input' | 'camera-responded' | 'skies-ready' | 'probes-ready'): void {
     if (name === 'probes-ready') this.probesReadyMarked = true;
     if (this.timings[name] !== undefined) return;
     this.timings[name] = Math.round(performance.now());
     performance.mark(`astudio:${name}`);
-    console.info(`[astudio] ${name} at ${this.timings[name]} ms (probes: ${this.probesEager ? 'eager' : 'deferred'})`);
+    console.info(`[astudio] ${name} at ${this.timings[name]} ms (probes: ${this.probesEager ? 'eager' : 'deferred'}, skies: ${SKIES_EAGER ? 'eager' : 'deferred'}, hdr: ${HDR_RES})`);
   }
 
   private readonly onFirstUserInput = (): void => {

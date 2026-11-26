@@ -21,6 +21,34 @@ function toSkyMood(mood: MoodId): SkyAssetMoodId {
   return mood === 'noon' ? 'daylight' : mood;
 }
 
+/**
+ * Sky HDR loading options, read from the page URL:
+ * - `?hdr=1k` uses the 1024x512 HDRs instead of 2048x1024 (for A/B measurement).
+ * - `?skies=eager` loads every sky HDR before the first frame (old behaviour). By default only the
+ *   opening preset's (midnight) HDR is loaded up front and the rest follow via loadDeferredSkies().
+ */
+const URL_PARAMS = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+export const HDR_RES: '1k' | '2k' = URL_PARAMS.get('hdr') === '1k' ? '1k' : '2k';
+export const SKIES_EAGER = URL_PARAMS.get('skies') === 'eager';
+const HDRI_BASENAMES: Record<SkyAssetMoodId, string> = {
+  midnight: 'blue_lagoon_night',
+  golden: 'belfast_sunset_puresky',
+  daylight: 'aristea_wreck_puresky',
+};
+const HDRI_BYTES: Record<'1k' | '2k', Record<SkyAssetMoodId, number>> = {
+  '2k': { midnight: 6_299_487, golden: 4_563_204, daylight: 5_345_625 },
+  '1k': { midnight: 1_596_163, golden: 1_188_370, daylight: 1_451_301 },
+};
+const STARTUP_SKY: SkyAssetMoodId = 'midnight';
+const DEFERRED_SKIES: SkyAssetMoodId[] = ['golden', 'daylight'];
+
+/** How many bytes the default startup estimate (all 2K HDRs) should be adjusted by for the current options. */
+export function startupSkyBytesDelta(): number {
+  const all2k = Object.values(HDRI_BYTES['2k']).reduce((a, b) => a + b, 0);
+  const moods: SkyAssetMoodId[] = SKIES_EAGER ? [STARTUP_SKY, ...DEFERRED_SKIES] : [STARTUP_SKY];
+  return moods.reduce((a, m) => a + HDRI_BYTES[HDR_RES][m], 0) - all2k;
+}
+
 interface LightSceneProfile {
   label: string;
   lmMult: number;
@@ -217,6 +245,10 @@ export class MoodSystem {
   private readonly lightmapsEast = new Map<MoodId, THREE.Texture>();
   private readonly skylines = new Map<SkyAssetMoodId, THREE.Texture>();
   private readonly pmrems = new Map<SkyAssetMoodId, THREE.Texture>();
+  /** Sky moods whose HDR failed to load: treated as ready (no sky reflections) so presets never get stuck. */
+  private readonly failedSkies = new Set<SkyAssetMoodId>();
+  private deferredSkiesPromise: Promise<void> | null = null;
+  private readonly skyWaiters = new Map<SkyAssetMoodId, Array<() => void>>();
   private readonly patchedMaterialsWest: THREE.MeshStandardMaterial[] = [];
   private readonly patchedMaterialsEast: THREE.MeshStandardMaterial[] = [];
   private onMoodBlend?: (
@@ -406,7 +438,6 @@ export class MoodSystem {
     byteTracker?: { initialLoaded: number; totalBytes: number }
   ): Promise<void> {
     const texLoader = new THREE.TextureLoader();
-    const rgbeLoader = new RGBELoader();
     const pmremGen = new THREE.PMREMGenerator(this.renderer);
     pmremGen.compileEquirectangularShader();
 
@@ -518,30 +549,15 @@ export class MoodSystem {
       }
     }
 
-    // 3. Load & Pre-Bake Poly Haven 2K HDRIs via PMREMGenerator sequentially with unified byte progress
-    const hdriFiles: Record<SkyAssetMoodId, string> = {
-      midnight: 'blue_lagoon_night_2k.hdr',
-      golden: 'belfast_sunset_puresky_2k.hdr',
-      daylight: 'aristea_wreck_puresky_2k.hdr',
-    };
-
+    // 3. Load & pre-bake the sky HDRIs via PMREMGenerator. Only the opening preset's HDR blocks the first
+    //    frame unless ?skies=eager; the others are fetched by loadDeferredSkies() once the scene is running.
     const pmremBaseMsg = messages?.pmrem ?? '正在烘焙 Poly Haven 真实环境反射 (PMREM)…';
-    for (let i = 0; i < skyMoods.length; i++) {
-      const m = skyMoods[i];
-      const stepMsg = `${pmremBaseMsg} (${i + 1}/${skyMoods.length})`;
+    const upfrontSkies: SkyAssetMoodId[] = SKIES_EAGER ? [STARTUP_SKY, ...DEFERRED_SKIES] : [STARTUP_SKY];
+    for (let i = 0; i < upfrontSkies.length; i++) {
+      const stepMsg = `${pmremBaseMsg} (${i + 1}/${upfrontSkies.length})`;
       emitProgress(stepMsg, 0);
-      const { blobUrl, bytes } = await fetchAsBlobUrl(`/assets/hdris/${hdriFiles[m]}`, (received) => {
-        emitProgress(stepMsg, received);
-      });
+      const bytes = await this.loadSkyHdr(upfrontSkies[i], pmremGen, (received) => emitProgress(stepMsg, received));
       downloadedBytes += bytes;
-      try {
-        const hdr = await rgbeLoader.loadAsync(blobUrl);
-        const rt = pmremGen.fromEquirectangular(hdr);
-        hdr.dispose();
-        this.pmrems.set(m, rt.texture);
-      } finally {
-        URL.revokeObjectURL(blobUrl);
-      }
     }
     emitProgress(pmremBaseMsg, 0);
     pmremGen.dispose();
@@ -552,6 +568,101 @@ export class MoodSystem {
     this.skylineUniforms.uTexA.value = this.skylines.get('midnight')!;
     this.skylineUniforms.uTexB.value = this.skylines.get('midnight')!;
     this.applyImmediate('midnight');
+  }
+
+  /** Downloads one sky HDR and stores its PMREM. Returns the bytes downloaded (0 on failure). */
+  private async loadSkyHdr(
+    m: SkyAssetMoodId,
+    pmremGen: THREE.PMREMGenerator,
+    onChunk?: (received: number) => void
+  ): Promise<number> {
+    const url = `/assets/hdris/${HDRI_BASENAMES[m]}_${HDR_RES}.hdr`;
+    let bytes = 0;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+      const chunks: BlobPart[] = [];
+      if (res.body) {
+        const reader = res.body.getReader();
+        let lastEmit = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            bytes += value.byteLength;
+            const now = performance.now();
+            if (onChunk && now - lastEmit >= 80) {
+              lastEmit = now;
+              onChunk(bytes);
+            }
+          }
+        }
+      } else {
+        const b = await res.arrayBuffer();
+        chunks.push(b);
+        bytes = b.byteLength;
+      }
+      onChunk?.(bytes);
+      const blobUrl = URL.createObjectURL(new Blob(chunks));
+      let hdr: THREE.DataTexture;
+      try {
+        hdr = await new RGBELoader().loadAsync(blobUrl);
+      } finally {
+        URL.revokeObjectURL(blobUrl);
+      }
+      const rt = pmremGen.fromEquirectangular(hdr);
+      hdr.dispose();
+      this.pmrems.set(m, rt.texture);
+    } catch (err) {
+      console.warn(`[MoodSystem] sky HDR for ${m} failed to load; that preset will have no sky reflections`, err);
+      this.failedSkies.add(m);
+    }
+    const waiters = this.skyWaiters.get(m);
+    this.skyWaiters.delete(m);
+    waiters?.forEach((fn) => fn());
+    return bytes;
+  }
+
+  /**
+   * Fetches the sky HDRs that were not loaded before the first frame, one after another.
+   * Safe to call more than once; resolves when all of them are ready (or failed).
+   */
+  public loadDeferredSkies(): Promise<void> {
+    if (!this.deferredSkiesPromise) {
+      this.deferredSkiesPromise = (async () => {
+        const pending = DEFERRED_SKIES.filter((m) => !this.isSkyReady(m));
+        if (pending.length === 0) return;
+        const pmremGen = new THREE.PMREMGenerator(this.renderer);
+        pmremGen.compileEquirectangularShader();
+        try {
+          for (const m of pending) await this.loadSkyHdr(m, pmremGen);
+        } finally {
+          pmremGen.dispose();
+        }
+      })();
+    }
+    return this.deferredSkiesPromise;
+  }
+
+  private isSkyReady(m: SkyAssetMoodId): boolean {
+    return this.pmrems.has(m) || this.failedSkies.has(m);
+  }
+
+  /** True once this mood's sky HDR has loaded (or failed), i.e. the mood can be shown and baked. */
+  public isMoodReady(mood: MoodId): boolean {
+    return this.isSkyReady(toSkyMood(mood));
+  }
+
+  /** Resolves once isMoodReady(mood) is true. */
+  public whenMoodReady(mood: MoodId): Promise<void> {
+    const m = toSkyMood(mood);
+    if (this.isSkyReady(m)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const list = this.skyWaiters.get(m) ?? [];
+      list.push(resolve);
+      this.skyWaiters.set(m, list);
+    });
   }
 
   public getLightmap(mood: MoodId, atlas: LightmapAtlasId = 'west'): THREE.Texture {

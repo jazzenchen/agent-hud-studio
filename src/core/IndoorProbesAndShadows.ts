@@ -225,9 +225,9 @@ export class IndoorReflectionProbes {
     return ALL_MOODS.every((m) => this.cachedProbes.has(m));
   }
 
-  private nextPendingBake(): { mood: MoodId; zone: ProbeZoneId } | null {
+  private nextPendingBake(isMoodReady: (mood: MoodId) => boolean): { mood: MoodId; zone: ProbeZoneId } | null {
     for (const mood of ALL_MOODS) {
-      if (this.cachedProbes.has(mood)) continue;
+      if (this.cachedProbes.has(mood) || !isMoodReady(mood)) continue;
       const partial = this.partialProbes.get(mood);
       for (const zone of ALL_ZONES) {
         if (!partial?.has(zone)) return { mood, zone };
@@ -350,16 +350,17 @@ export class IndoorReflectionProbes {
   }
 
   /**
-   * Background step: bakes ONE room probe of the next unbaked mood, then hands the scene back via
+   * Background step: bakes ONE room probe of the next unbaked mood whose sky HDR is loaded, then hands the scene back via
    * `restoreLiveMood`. Call only while no mood transition is running. Returns the mood that became
    * fully baked on this step, if any.
    */
   public bakeNextZone(
     scene: THREE.Scene,
     applyMoodForBake: (mood: MoodId) => void,
-    restoreLiveMood: () => void
+    restoreLiveMood: () => void,
+    isMoodReady: (mood: MoodId) => boolean = () => true
   ): MoodId | null {
-    const next = this.nextPendingBake();
+    const next = this.nextPendingBake(isMoodReady);
     if (!next) return null;
     this.withBakeState(() => {
       applyMoodForBake(next.mood);
