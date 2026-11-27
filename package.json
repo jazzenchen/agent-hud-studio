@@ -19,6 +19,7 @@
     "pipeline:studio:bake": "${BLENDER_BIN:-blender} -b --factory-startup --python pipeline/bake_studio_slice.py"
   },
   "dependencies": {
+    "@sparkjsdev/spark": "^0.1.10",
     "n8ao": "^2.1.0",
     "postprocessing": "^6.36.7",
     "three": "^0.174.0"

@@ -64,6 +64,8 @@ BLENDERKIT_PHASE1_STUDIO = {
     "pen_holder": "1fd8333b-4e22-4960-9fbb-2d3c9cbece14",             # Loaded Sculpted Pen & Tool Cup
     "quadcopter_drone": "9d3a59d0-6949-4d7a-a2be-aa11b4ed9df4",       # FPV / Camera Quadcopter Drone
     "screwdriver_real": "088caf04-8c48-41fd-9289-6a12f60d57af",       # Real 1-Piece Sculpted Screwdriver
+    "industrial_3d_printer": "8a2427f7-fffb-4db5-8c0f-46086a379016",  # Enclosed Matte-Black Industrial 3D Printer
+    "epson_l4160": "c06f706a-388a-4cee-b38b-7e782f6784b9",            # Epson L4160 Matte-Black Printer/Scanner
 }
 
 BLENDERKIT_PHASE3_LOFT = {

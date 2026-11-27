@@ -113,7 +113,8 @@ LOFT_POLY_BUDGETS = {
     "Hero_CascadingPothos": 5500,
     "KB_CoiledAviatorCable.001": 4000,
     "KB_CoiledAviatorCable": 4000,
-    "BK_3DPrinter": 20000,             # Crisp gantry/spool/frame without 32k micro-bolt screw threads
+    "BK_3DPrinter": 20000,             # Crisp enclosed industrial 3D printer
+    "BK_DesktopPrinter": 18000,        # Crisp Epson L4160 matte-black printer/scanner
     "BK_FilamentSpools": 8000,         # Smooth filament spool flanges
     "BK_AlexDrawer_N": 6500,
     "BK_AlexDrawer_S": 6500,
@@ -923,7 +924,7 @@ def optimize_full_loft_for_60fps(atlas_objs: list[bpy.types.Object]) -> None:
         # Shelf / Pegboard / Living / Bedroom Electronics & Watches
         "BK_PegDualSense", "BK_PegGameBoy", "BK_PegHeadset", "BK_PegScrewdriver",
         "BK_DisplayKeyboard_Shelf", "BK_Macintosh1984", "BK_Canon5D_Shelf", "BK_CanonAE1_Shelf",
-        "BK_PSP_Shelf", "BK_VinylTurntable", "BK_3DPrinter",
+        "BK_PSP_Shelf", "BK_VinylTurntable", "BK_3DPrinter", "BK_DesktopPrinter",
         "Hero_PS5Console", "BK_LivingDualSense", "Liv_AppleTV4K", "Liv_AppleTVRemote",
         "BK_BedClosetCamera", "Bath_CaddyTablet",
         # ALL Loft Chairs & Bar Stools (un-batched for rotation/sliding animation!)

@@ -99,7 +99,6 @@ def build_full_loft() -> Path:
     build_desk_papers_laptop_stand_and_notes(desk_origin, mats, col_hero)
     build_back_wall_floating_shelf_and_slats(wall_y=2.04, mats=mats, col=col_hero)
     build_maker_workbench_counter(location=(1.88, -0.74, 0.0), mats=mats, col=col_hero)
-    build_compact_desktop_printer(location=(1.88, -1.16, 0.702), rot_z_deg=0.0, mats=mats, col=col_hero)
 
     pc_loc = (0.86, 1.48, 0.0)
     build_pc_rolling_caddy(location=pc_loc, rot_z_deg=0.0, mats=mats, col=col_hero)

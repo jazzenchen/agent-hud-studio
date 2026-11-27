@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { AvatarSplatManager } from './AvatarSplatManager';
 import { DynamicScreenRenderer } from './DynamicScreenRenderer';
 import { GroundedContactShadows, IndoorReflectionProbes } from './IndoorProbesAndShadows';
 import { patchMaterialWithRgbMLightmap } from './LightmapMaterialPatch';
@@ -20,6 +21,12 @@ import { HudController } from '../ui/HudController';
  * Avoids Reflector's default sRGB Photoshop `blendOverlay` (which explodes on linear HDR > 1.0) and
  * skips redundant tonemapping/sRGB conversion so pmndrs EffectComposer applies AgX + Bloom uniformly!
  */
+/** Room-probe ambient for walnut furniture that has no lightmap, tuned so it matches baked walnut in the same room. */
+const PROP_WALNUT_ENV = 0.55;
+
+/** Emissive strength of the desk keyboard's backlight sheet (the GLB ships it at 3.2, tuned for product renders). */
+const KEY_BACKLIGHT_INTENSITY = 12;
+
 const LINEAR_ARCH_MIRROR_SHADER = {
   name: 'LinearArchMirrorShader',
   uniforms: {
@@ -85,6 +92,7 @@ export class GeekLoftApp {
   private readonly indoorProbes: IndoorReflectionProbes;
   private readonly contactShadows: GroundedContactShadows;
   private readonly screens: DynamicScreenRenderer;
+  private readonly avatarSplat: AvatarSplatManager;
   private readonly collision: CollisionWorld;
   private readonly cameraCtrl: DualCameraController;
   private readonly interactables: InteractableRegistry;
@@ -133,6 +141,7 @@ export class GeekLoftApp {
   >();
   private readonly allSceneMats = new Set<THREE.MeshStandardMaterial>();
   private wovenRugMaps: { map: THREE.CanvasTexture; bump: THREE.CanvasTexture } | null = null;
+  private rugPileMap: THREE.CanvasTexture | null = null;
   private basaltStoneMaps: { map: THREE.CanvasTexture; bump: THREE.CanvasTexture } | null = null;
   private bathReflector: Reflector | null = null;
   private bedReflector: Reflector | null = null;
@@ -280,6 +289,73 @@ export class GeekLoftApp {
     return this.wovenRugMaps;
   }
 
+  /**
+   * Chunky hand-loomed wool for the floor rugs. The rugs are lightmapped, so bump barely shows on them: the
+   * texture has to live in the colour map. Ribs give the weave up close; two octaves of tileable value noise
+   * give soft tonal mottling that survives mip-mapping, so the rug still reads as textile from across the room.
+   */
+  private getRugPileMap(): THREE.CanvasTexture {
+    if (this.rugPileMap) return this.rugPileMap;
+    const size = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+    const img = ctx.createImageData(size, size);
+    let seed = 4242;
+    const rand = () => {
+      seed = (seed * 16807) % 2147483647;
+      return (seed - 1) / 2147483646;
+    };
+    const lattice = (cells: number) => {
+      const g = new Float32Array(cells * cells);
+      for (let i = 0; i < g.length; i++) g[i] = rand();
+      return (x: number, y: number) => {
+        const fx = (x / size) * cells;
+        const fy = (y / size) * cells;
+        const x0 = Math.floor(fx) % cells;
+        const y0 = Math.floor(fy) % cells;
+        const x1 = (x0 + 1) % cells;
+        const y1 = (y0 + 1) % cells;
+        const tx = THREE.MathUtils.smoothstep(fx - Math.floor(fx), 0, 1);
+        const ty = THREE.MathUtils.smoothstep(fy - Math.floor(fy), 0, 1);
+        const a = g[y0 * cells + x0] * (1 - tx) + g[y0 * cells + x1] * tx;
+        const b = g[y1 * cells + x0] * (1 - tx) + g[y1 * cells + x1] * tx;
+        return a * (1 - ty) + b * ty;
+      };
+    };
+    const broad = lattice(4);
+    const fine = lattice(16);
+    const rowShift = new Float32Array(size);
+    for (let i = 0; i < size; i++) rowShift[i] = (rand() - 0.5) * 0.05;
+    for (let y = 0; y < size; y++) {
+      const rib = 0.5 + 0.5 * Math.cos((y / 8) * Math.PI * 2); // 8 px rib: ~1.3 cm at 0.8 m per tile
+      for (let x = 0; x < size; x++) {
+        const knot = 0.5 + 0.5 * Math.cos(((x + (Math.floor(y / 8) % 2) * 6) / 12) * Math.PI * 2);
+        const mottle = (broad(x, y) - 0.5) * 0.11 + (fine(x, y) - 0.5) * 0.07;
+        const tone = THREE.MathUtils.clamp(
+          0.80 + (rib - 0.5) * 0.17 + (knot - 0.5) * 0.06 + mottle + rowShift[y] + (rand() - 0.5) * 0.05,
+          0.55,
+          1.0
+        );
+        const v = Math.round(tone * 255);
+        const idx = (y * size + x) * 4;
+        img.data[idx] = v;
+        img.data[idx + 1] = v;
+        img.data[idx + 2] = v;
+        img.data[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.anisotropy = 8;
+    this.rugPileMap = map;
+    return map;
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -363,6 +439,7 @@ export class GeekLoftApp {
     this.indoorProbes = new IndoorReflectionProbes(this.renderer);
     this.contactShadows = new GroundedContactShadows();
     this.screens = new DynamicScreenRenderer();
+    this.avatarSplat = new AvatarSplatManager(this.renderer, this.scene);
     this.interactables = new InteractableRegistry(
       this.cameraCtrl.camera,
       canvas,
@@ -606,7 +683,11 @@ export class GeekLoftApp {
       if (!this.pureClayMode && !this.wireframeMode) {
         this.indoorProbes.blendMood(from, to, t, envA, envB);
       }
+      this.avatarSplat.blendMood(from, to, t);
     }, true);
+
+    // Optional 3DGS avatar auto-load (/assets/avatars/avatar.{spz,ply} or ?avatar=...) + drag-drop
+    void this.avatarSplat.tryAutoLoad();
 
     // Install TRUE real-time planar mirrors (Spa Bathroom Circular Mirror + Bedroom Full-Length Dressing Mirror)
     // only once every mood's probes are baked, so CubeCameras never recurse into planar Reflectors!
@@ -615,7 +696,6 @@ export class GeekLoftApp {
       this.setupRealPlanarMirrors();
       this.markTiming('probes-ready');
     }
-
 
     this.hud.setLoading(98, this.hud.getMessages().loading.warmup);
     this.postFx.warmup();
@@ -896,13 +976,41 @@ export class GeekLoftApp {
           m.needsUpdate = true;
           continue;
         }
-        if (baseName === 'Furn_SpaTubStoneResin' || baseName === 'Porcelain_white') {
+        if (baseName === 'Furn_SpaTubStoneResin' || baseName === 'Porcelain_white' || baseName === 'Circle.002_Baked') {
           // Honed matte-satin architectural stone-resin tub & ceramic (ZERO harsh circular PointLight dot!)
+          // Circle.002_Baked is the vessel basin: same white stone-resin as the tub so the sanitaryware reads as one suite.
+          if (baseName === 'Circle.002_Baked') {
+            m.map = null;
+            m.normalMap = null;
+            m.roughnessMap = null;
+            m.metalnessMap = null;
+            m.needsUpdate = true;
+          }
           m.color.set('#e2dfd8');
           m.roughness = baseName === 'Porcelain_white' ? 0.36 : 0.38;
           m.metalness = 0.0;
           m.envMapIntensity = 0.20;
           attenuateDirectSpecular(m, 0.16, 'ceramic');
+          continue;
+        }
+        if (baseName === 'AH_Key_Backlight') {
+          // Keyboard backlight: it only shows through the ~1 mm gaps between cap skirts, so it needs to run hot
+          // enough to bloom before it reads at desk-camera distance.
+          m.color.set('#1a0f08');
+          m.emissive.set('#ff9a42');
+          m.emissiveIntensity = KEY_BACKLIGHT_INTENSITY;
+          m.needsUpdate = true;
+          continue;
+        }
+        if (baseName === 'NurbsPath.001_Baked') {
+          // Vessel-basin faucet: matte black, matching the tub floor filler and towel ladder in the same room.
+          m.map = null;
+          m.color.set('#1b1c1f');
+          m.roughness = 0.46;
+          m.metalness = 0.22;
+          m.envMapIntensity = 0.16;
+          attenuateDirectSpecular(m, 0.28, 'blackfaucet');
+          m.needsUpdate = true;
           continue;
         }
         if (baseName === 'HW_InductionGlass') {
@@ -993,7 +1101,9 @@ export class GeekLoftApp {
           m.color.set('#ffffff');
           m.roughness = baseName === 'Arch_WalnutSlats' ? 0.66 : 0.72;
           m.metalness = 0.0;
-          m.envMapIntensity = 0.14;
+          // Baked walnut (__West/__East) gets its ambient from the lightmap. Loose walnut furniture has no lightmap,
+          // so it takes its ambient from the room probe instead; at 0.14 it rendered ~2x darker than baked walnut.
+          m.envMapIntensity = m.name === baseName ? PROP_WALNUT_ENV : 0.14;
           if (m instanceof THREE.MeshPhysicalMaterial) m.clearcoat = 0;
           m.needsUpdate = true;
         } else if (baseName === 'Arch_Wall_StudioDarkConcrete') {
@@ -1039,21 +1149,24 @@ export class GeekLoftApp {
           baseName === 'Furn_WovenRug'
         ) {
           // Clean, bright warm stone-oatmeal woven wool rugs (zero dirty smudges, crisp contrast under black leather sofas!)
+          // Floor rugs get the chunky pile map (the fine weave was sub-millimetre and read as flat paper);
+          // the bath mat keeps the fine cotton weave.
           const woven = this.getWovenTextileMaps();
-          const colTex = woven.map.clone();
+          const isBathMat = baseName === 'Prop_BathCottonMat';
+          const colTex = isBathMat ? woven.map.clone() : this.getRugPileMap().clone();
           const bmpTex = woven.bump.clone();
-          const rep = baseName === 'Prop_BathCottonMat' ? 10 : 28;
+          const rep = isBathMat ? 10 : 1.25;
           colTex.repeat.set(rep, rep);
-          bmpTex.repeat.set(rep, rep);
+          bmpTex.repeat.set(isBathMat ? rep : 5, isBathMat ? rep : 5);
           colTex.needsUpdate = true;
           bmpTex.needsUpdate = true;
           m.map = colTex;
           m.bumpMap = bmpTex;
-          m.bumpScale = 0.0065;
+          m.bumpScale = 0.011;
           if (baseName === 'Furn_StudioRugCharcoal' || baseName === 'Furn_LivingRugCharcoal') {
-            m.color.set('#bcb5a8'); // Crisp clean warm stone-oatmeal wool (anchors black leather sofas cleanly!)
+            m.color.set('#ada596'); // Warm stone-oatmeal wool, held below paper-white so it keeps tone in direct sun
           } else if (baseName === 'Furn_BedBoucleRug') {
-            m.color.set('#c8c1b5');
+            m.color.set('#b8b0a2');
           } else if (baseName === 'Prop_BathCottonMat') {
             m.color.set('#afa89d');
           }
@@ -1062,12 +1175,27 @@ export class GeekLoftApp {
           m.envMapIntensity = 0.03;
           if (m instanceof THREE.MeshPhysicalMaterial) m.clearcoat = 0;
           m.needsUpdate = true;
-        } else if (
-          baseName === 'Furn_SofaCloudOatmeal' ||
-          baseName === 'Furn_LoaferCognacVelvet' ||
-          baseName === 'Guide Lounge Chair_Baked'
-        ) {
-          // Unified Italian Full-Grain Satin-Matte Black Leather across ALL sofas & lounge chairs (clean, cohesive, zero UV bleed!)
+        } else if (baseName === 'Furn_LoaferCognacVelvet') {
+          // Living-room armchair: cognac leather, the one warm seat that breaks up the black sofa group
+          // and picks up the cognac pillow and the walnut.
+          const woven = this.getWovenTextileMaps();
+          const bmpTex = woven.bump.clone();
+          bmpTex.repeat.set(22, 22);
+          bmpTex.needsUpdate = true;
+          m.map = null;
+          m.normalMap = null;
+          m.roughnessMap = null;
+          m.color.set('#7d4a2b');
+          m.bumpMap = bmpTex;
+          m.bumpScale = 0.0022;
+          m.roughness = 0.56;
+          m.metalness = 0.0;
+          m.envMapIntensity = 0.30;
+          m.userData.directSpecFactor = 0.28;
+          m.userData.directSpecKey = 'leather';
+          m.needsUpdate = true;
+        } else if (baseName === 'Furn_SofaCloudOatmeal' || baseName === 'Guide Lounge Chair_Baked') {
+          // Satin-matte black leather on the sofa (clean, zero UV bleed!)
           const woven = this.getWovenTextileMaps();
           const bmpTex = woven.bump.clone();
           bmpTex.repeat.set(22, 22);

@@ -14,6 +14,13 @@ export interface LightmapBlendUniforms {
  * Also suppresses redundant diffuse IBL on lightmapped surfaces while keeping full PMREM
  * specular reflections so oak herringbone floors, walnut desks, and concrete keep physical sheen.
  */
+/**
+ * Kitchen fill. The kitchen sits deepest in the plan and bakes well over a stop darker than the living room it opens
+ * onto, so its baked irradiance gets a gain. The mask is a soft-edged box in world XZ so the open edges toward the
+ * studio and living room blend with no seam; both atlases use it, since the floor crosses the atlas boundary.
+ */
+export const KITCHEN_FILL_GAIN = { value: 2.4 };
+
 export function patchMaterialWithRgbMLightmap(
   material: THREE.MeshStandardMaterial,
   lightMapA: THREE.Texture,
@@ -32,13 +39,21 @@ export function patchMaterialWithRgbMLightmap(
   material.lightMap = lightMapA;
   material.lightMapIntensity = intensity;
 
-  material.customProgramCacheKey = () => 'archviz_rgbm_dual_lightmap_v2';
+  material.customProgramCacheKey = () => 'archviz_rgbm_dual_lightmap_v3';
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uLightMapB = sharedUniforms.uLightMapB;
     shader.uniforms.uLightMapMix = sharedUniforms.uLightMapMix;
     shader.uniforms.uLightMapRange = sharedUniforms.uLightMapRange;
     shader.uniforms.uLightMapScale = sharedUniforms.uLightMapScale;
+    shader.uniforms.uKitchenFill = KITCHEN_FILL_GAIN;
+
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vLmWorldPos;')
+      .replace(
+        '#include <project_vertex>',
+        '#include <project_vertex>\nvLmWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;'
+      );
 
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <lightmap_pars_fragment>',
@@ -48,6 +63,16 @@ export function patchMaterialWithRgbMLightmap(
       uniform float uLightMapMix;
       uniform float uLightMapRange;
       uniform float uLightMapScale;
+      uniform float uKitchenFill;
+      varying vec3 vLmWorldPos;
+
+      // 1 inside the kitchen (x 2.4..6.4, z -2.05..1.5), fading to 0 across its open west and south edges.
+      float kitchenFillMask(vec3 p) {
+        float west = smoothstep(1.9, 2.9, p.x);
+        float east = 1.0 - smoothstep(6.38, 6.46, p.x);
+        float south = 1.0 - smoothstep(1.0, 2.0, p.z);
+        return west * east * south;
+      }
 
       vec3 decodeRGBMLightmap(vec4 rgbm, float maxRange) {
         vec3 decoded = rgbm.rgb * (rgbm.a * maxRange);
@@ -64,6 +89,7 @@ export function patchMaterialWithRgbMLightmap(
           vec3 lmA = decodeRGBMLightmap(texture2D(lightMap, vLightMapUv), uLightMapRange);
           vec3 lmB = decodeRGBMLightmap(texture2D(uLightMapB, vLightMapUv), uLightMapRange);
           vec3 bakedDiffuse = mix(lmA, lmB, uLightMapMix) * lightMapIntensity * uLightMapScale;
+          bakedDiffuse *= mix(1.0, uKitchenFill, kitchenFillMask(vLmWorldPos));
           // Multiply by PI because Three.js BRDF_Lambert divides indirect irradiance by PI
           irradiance += bakedDiffuse * PI;
         #endif

@@ -684,18 +684,40 @@ def place_real_artist_models(
                 obj.data.materials.clear()
                 obj.data.materials.append(mats["alex_charcoal"])
 
-    # Real Creality CR-10S Pro FDM 3D Printer (orange PLA spool on top!) resting on walnut maker bench (Z = 0.702)!
+    # Real Enclosed Industrial CoreXY 3D Printer resting on walnut maker bench (Z = 0.702)!
     import_blenderkit_glb(
-        bk("printer_3d"), "BK_3DPrinter", col_bk,
-        target_height=0.58, location=(1.88, -0.34, 0.702),
-        rotation_xyz_deg=(0.0, 0.0, -84.0), ground_z=0.702,
-        exclude_substrings=("220v cable",),
+        bk("industrial_3d_printer"), "BK_3DPrinter", col_bk,
+        target_height=0.44, location=(1.88, -0.34, 0.702),
+        rotation_xyz_deg=(0.0, 0.0, -90.0), ground_z=0.702,
     )
-    # 3 Stacked Real PLA Filament Spools cleanly centered behind cutting mat!
+    # Real Matte-Black Epson L4160 Printer/Scanner resting on South end of walnut maker bench (Z = 0.702)!
+    epson = import_blenderkit_glb(
+        bk("epson_l4160"), "BK_DesktopPrinter", col_bk,
+        target_max_dim=0.45, location=(1.88, -1.21, 0.702),
+        rotation_xyz_deg=(0.0, 0.0, -90.0), ground_z=0.702,
+    )
+    # Fix BlenderKit glTF body materials (Plastic_dotted polka-dot lid & untextured light body plastics -> matte black!)
+    for obj in epson.children_recursive:
+        if obj.type != "MESH" or not obj.data.materials:
+            continue
+        for i, m in enumerate(obj.data.materials):
+            if not m:
+                continue
+            mn = m.name.lower()
+            has_img = m.use_nodes and any(n.type == "TEX_IMAGE" for n in m.node_tree.nodes)
+            if "dotted" in mn or (mn in ("plastic_black", "plastic_black.lid", "plastic_tray", "plastic", "gray_plastic", "plastic_alb") and not has_img):
+                obj.data.materials[i] = mats["matte_plastic"]
+            elif "front_panel" in mn and m.use_nodes:
+                # Keep crisp EPSON button/logo image texture if present, just ensure dark charcoal housing
+                bsdf = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+                if bsdf and not bsdf.inputs["Base Color"].is_linked:
+                    bsdf.inputs["Base Color"].default_value = (0.04, 0.04, 0.045, 1.0)
+                    bsdf.inputs["Roughness"].default_value = 0.42
+    # 3 Stacked Real PLA Filament Spools cleanly centered behind cutting mat (zero overlap!)
     import_blenderkit_glb(
         bk("filament_spools"), "BK_FilamentSpools", col_bk,
-        target_width=0.31, location=(1.96, -0.78, 0.702),
-        rotation_xyz_deg=(0.0, 0.0, -18.0), ground_z=0.702,
+        target_width=0.25, location=(2.01, -0.76, 0.702),
+        rotation_xyz_deg=(0.0, 0.0, -12.0), ground_z=0.702,
     )
 
     # Minimalist Flush 86mm Matte-Black Architectural Dual-Outlet + USB-C Wall Plates (crisp bevels, ZERO decimation artifacts!)
@@ -830,9 +852,8 @@ def build_studio_slice() -> Path:
     # Warm Architectural Back Wall: Left Vertical Walnut Acoustic Slats + 1.58m Floating Walnut Shelf + 2700K Wash!
     build_back_wall_floating_shelf_and_slats(wall_y=2.04, mats=mats, col=col_hero)
 
-    # East Maker Workbench Countertop (unifying Double Charcoal IKEA Alex Drawers) + Compact Wireless Laser Printer!
+    # East Maker Workbench Countertop (unifying Double Charcoal IKEA Alex Drawers; real Epson L4160 sits atop!)
     build_maker_workbench_counter(location=(1.88, -0.74, 0.0), mats=mats, col=col_hero)
-    build_compact_desktop_printer(location=(1.88, -1.16, 0.702), rot_z_deg=0.0, mats=mats, col=col_hero)
 
     # PC Tower neatly aligned SQUARE (0 deg) on rolling matte-black PC floor caddy with 14.4cm ZERO-CLIP clearance from Desk_Foot_R!
     pc_loc = (0.86, 1.48, 0.0)

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { ExteriorCity } from './ExteriorCity';
-import type { LightmapBlendUniforms } from './LightmapMaterialPatch';
+import { KITCHEN_FILL_GAIN, type LightmapBlendUniforms } from './LightmapMaterialPatch';
 import type { PostProcessingPipeline } from './PostProcessing';
 import {
   STUDIO_NEON_MODES,
@@ -902,6 +902,9 @@ export class MoodSystem {
     const lmScale = THREE.MathUtils.lerp(a.lightMapScale, b.lightMapScale, moodT) * effectiveLmMult;
     this.lightmapUniformsWest.uLightMapScale.value = lmScale;
     this.lightmapUniformsEast.uLightMapScale.value = lmScale;
+    // Kitchen fill: full strength by day, when the kitchen is furthest behind the sunlit rooms; eased back after
+    // dark, when its own pendants already carry it and the room should stay moody.
+    KITCHEN_FILL_GAIN.value = THREE.MathUtils.lerp(1.5, 2.4, isDayFactor);
     this.scene.environmentIntensity =
       THREE.MathUtils.lerp(a.envIntensity, b.envIntensity, moodT) *
       THREE.MathUtils.lerp(0.42, 1.12, Math.min(1, effectiveLmMult));

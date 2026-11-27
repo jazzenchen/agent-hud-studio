@@ -285,14 +285,7 @@ def build_all_lived_in_details(
 
     # A2. (Removed old South wall Liv_GalleryFrame — replaced by the full-height Rimadesio/Oikos Penthouse Entry Door & Foyer!)
 
-    # A3. Sculptural Honed Dark-Marble & Brushed-Brass Martini Side Table beside the Burnt-Cognac Loafer Lounge Chair!
-    mt_x, mt_y = 3.44, -3.14
-    create_beveled_cylinder("Liv_MartiniBase", 0.14, 0.018, 28, 0.004, location=(mt_x, mt_y, 0.009), material=mats["dark_marble"], collection=col)
-    create_beveled_cylinder("Liv_MartiniStem", 0.011, 0.50, 18, 0.002, location=(mt_x, mt_y, 0.26), material=mats["brushed_brass"], collection=col)
-    create_beveled_cylinder("Liv_MartiniTop", 0.19, 0.020, 32, 0.004, location=(mt_x, mt_y, 0.52), material=mats["dark_marble"], collection=col)
-    create_beveled_box("Liv_MartiniBook", (0.145, 0.195, 0.020), (mt_x - 0.052, mt_y + 0.016, 0.540), rotation=(0.0, 0.0, math.radians(-14)), bevel=0.002, material=mats["vinyl_cover_1"], collection=col)
-    mcup_prof = [(0.0, 0.0), (0.024, 0.0), (0.030, 0.014), (0.031, 0.068), (0.028, 0.070), (0.025, 0.066), (0.024, 0.014), (0.018, 0.006), (0.0, 0.006)]
-    _create_lathe_mesh("Liv_MartiniCup", mcup_prof, (mt_x + 0.095, mt_y - 0.056, 0.530), mats["ceramic_charcoal"], col, segments=24)
+    # A3. (Removed Martini side table + book + cup behind the sofa/chair to keep the foyer walkway completely open!)
 
     # A4. Nested Low Round Dark-Marble Accent Coffee Table paired cleanly beside the walnut coffee table (zero overlap)!
     nt_x, nt_y = cx + 0.86, -4.06

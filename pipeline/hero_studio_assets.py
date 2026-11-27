@@ -3020,29 +3020,24 @@ def build_maker_workbench_counter(
         "MakerBench_BackLip", (0.016, 1.38, 0.038), (0.272, 0.0, 0.712),
         bevel=0.002, material=mats["anodized_black"], collection=col,
     ))
-    # Green self-healing maker cutting mat on front-center workspace (Z = 0.702..0.705)
+    # Green self-healing maker cutting mat neatly aligned front-center (Z = 0.702..0.705, zero overlap w/ spools or printer!)
     parts.append(create_beveled_box(
-        "MakerBench_CuttingMat", (0.26, 0.36, 0.003), (-0.11, 0.04, 0.7035),
+        "MakerBench_CuttingMat", (0.22, 0.34, 0.003), (-0.12, 0.01, 0.7035),
         bevel=0.001, material=mats["cutting_mat_green"], collection=col,
     ))
-    # Fresh ream of crisp white A4 printer paper stacked cleanly IN FRONT-LEFT of the printer (zero overlap!)
+    # Matte Terracotta PLA 3D-printed calibration cube aligned neatly square on cutting mat!
     parts.append(create_beveled_box(
-        "MakerBench_A4PaperReam", (0.210, 0.260, 0.038), (-0.14, -0.22, 0.721),
-        rotation=(0.0, 0.0, math.radians(-5.0)), bevel=0.0015, material=mats["paper_cream"], collection=col,
+        "MakerBench_3DPrintProto", (0.032, 0.032, 0.032), (-0.12, 0.11, 0.721),
+        rotation=(0.0, 0.0, 0.0), bevel=0.003, material=mats["keycap_accent"], collection=col,
     ))
-    # Matte Terracotta PLA 3D-printed prototype calibration cube sitting cleanly on cutting mat!
+    # Brushed steel vernier caliper aligned neatly parallel on the green cutting mat!
     parts.append(create_beveled_box(
-        "MakerBench_3DPrintProto", (0.034, 0.034, 0.034), (-0.13, 0.14, 0.722),
-        rotation=(0.0, 0.0, math.radians(24.0)), bevel=0.003, material=mats["keycap_accent"], collection=col,
-    ))
-    # Brushed steel vernier caliper resting cleanly on the green cutting mat
-    parts.append(create_beveled_box(
-        "MakerBench_CaliperBar", (0.014, 0.185, 0.003), (-0.12, 0.03, 0.7065),
-        rotation=(0.0, 0.0, math.radians(16.0)), bevel=0.0006, material=mats["chrome"], collection=col,
+        "MakerBench_CaliperBar", (0.012, 0.180, 0.003), (-0.12, -0.04, 0.7065),
+        rotation=(0.0, 0.0, 0.0), bevel=0.0006, material=mats["chrome"], collection=col,
     ))
     parts.append(create_beveled_box(
-        "MakerBench_CaliperJaw", (0.048, 0.022, 0.004), (-0.132, -0.032, 0.707),
-        rotation=(0.0, 0.0, math.radians(16.0)), bevel=0.0008, material=mats["chrome"], collection=col,
+        "MakerBench_CaliperJaw", (0.044, 0.018, 0.004), (-0.132, -0.105, 0.707),
+        rotation=(0.0, 0.0, 0.0), bevel=0.0008, material=mats["chrome"], collection=col,
     ))
 
     # Floating Walnut Maker Wall Shelf above workbench (Z = 1.68m, aligning visually with Bookshelf Tier 4!)
